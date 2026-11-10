@@ -4,16 +4,17 @@ Node.js (Express) · **Neon** (Postgres + pgvector) · **Voyage AI** (embedding)
 Tên, giọng điệu của trợ lý do quản trị viên đặt trong giao diện, không gắn tên riêng.
 
 ## Cách hoạt động
-1. Admin chọn tệp **PDF / Word (.docx) / HTML / TXT / Markdown** → hệ thống **chuyển sang Markdown** rồi **quét trước** (chưa lưu gì). Admin xem báo cáo và bản Markdown xem trước, sau đó mới xác nhận lập chỉ mục.
-2. Markdown được tách đoạn theo cây tiêu đề (**Chương › Mục › Điều**), tạo embedding bằng Voyage, lưu vào Neon cùng bản Markdown của tệp.
+1. Admin chọn tệp **PDF / Word (.docx) / HTML / TXT / Markdown** → hệ thống **chuyển sang Markdown** rồi **quét trước** (chưa lưu gì). Tệp chỉ tải lên **một lần**: kết quả quét được giữ ở máy chủ 20 phút, bước xác nhận chỉ gửi mã quét. Admin xem báo cáo và bản Markdown xem trước rồi xác nhận.
+2. Markdown được tách đoạn theo cây tiêu đề (**Chương › Mục › Điều**) và ghi vào Neon **ngay lập tức** (trả lời trong chưa đầy 1 giây).
+3. Embedding (Voyage) chạy **nền**, từng lô nhỏ đúng hạn mức, có thanh tiến độ trong bảng tài liệu. Tài liệu chỉ vào kết quả tìm kiếm khi đã lập chỉ mục xong. Server khởi động lại giữa chừng thì tự chạy tiếp; lỗi thì bấm **Thử lại**, không mất đoạn nào.
 3. Người dùng hỏi → tìm 6 đoạn liên quan nhất (chỉ trong văn bản còn hiệu lực) → model Groq trả lời, ghi nhãn [số] và hiện nguồn.
 4. Đăng ký → **chờ duyệt** → admin duyệt mới đăng nhập được. Mật khẩu băm bcrypt, phiên là token ngẫu nhiên lưu bản băm trong database.
 
 ## Pipeline lập chỉ mục
 
 ```
-tệp tải lên ─▶ lib/markdown.js ─▶ lib/chunker.js ─▶ embed() (Voyage) ─▶ Neon (documents.markdown + chunks)
-               toMarkdown()        chunkMarkdown()
+tệp tải lên ─▶ lib/markdown.js ─▶ lib/chunker.js ─▶ ghi Neon ─▶ lib/indexer.js (NỀN) ─▶ embedding Voyage
+               toMarkdown()        chunkMarkdown()   documents + chunks   từng lô nhỏ, giữ nhịp 3 RPM/10K TPM
 ```
 
 | Loại tệp | Cách chuyển sang Markdown |
@@ -29,6 +30,14 @@ Cấp tiêu đề cố định: `#` tên văn bản · `##` Chương · `###` M�
 **Tách đoạn** (`chunkMarkdown`): mỗi Điều/mục là một đơn vị riêng, không bao giờ gộp hai Điều vào một đoạn. Nhãn trích dẫn là đường dẫn đầy đủ, ví dụ `Chương I – QUY ĐỊNH CHUNG › Điều 12. Ngày toàn dân…`. Mục dài (mặc định > 1800 ký tự, đổi bằng `CHUNK_MAX_CHARS`) được tách ở ranh giới Khoản/điểm và đánh dấu `(phần 1/3)`; bảng được giữ nguyên, bảng quá dài tách theo hàng và lặp lại hàng tiêu đề; chỉ khi một đoạn văn đơn lẻ vẫn quá dài mới tách theo câu (có gối đầu), cuối cùng mới cắt cứng.
 
 Muốn **thay bộ chuyển đổi** (ví dụ thêm OCR cho PDF scan bằng Docling/Marker/dịch vụ OCR): chỉ sửa `pdfToMarkdown()` trong `lib/markdown.js` để trả về `{ text, markdown }`, các bước sau không đổi.
+
+## Lập chỉ mục nền và hạn mức Voyage
+Gói Voyage **chưa thanh toán** chỉ cho **3 yêu cầu/phút và 10.000 token/phút**. Một bộ luật dài (~75 đoạn, ~45.000 token) vẫn lập chỉ mục được, chỉ mất khoảng **5 phút chạy nền** (admin không phải chờ). Hệ thống chia lô theo token, chờ đủ chỗ trong hạn mức trước khi gửi và luôn chừa lại 1 yêu cầu/phút cho câu hỏi của người dùng nên chatbot vẫn trả lời bình thường trong lúc lập chỉ mục. Báo cáo quét hiển thị thời gian ước tính.
+
+Muốn nhanh hơn: thêm phương thức thanh toán ở Voyage rồi đặt `EMBED_RPM` và `EMBED_TPM` theo hạn mức ghi trên trang Voyage của bạn (xem `.env.example`). Hạn mức Voyage hiện hành do Voyage quy định và có thể thay đổi, hãy đối chiếu trên trang của họ.
+
+## Quản lý quyền admin
+Trang **Người dùng** có nút **Cấp quyền admin** / **Gỡ quyền admin** (bấm hai lần để xác nhận). Có hiệu lực ngay, không cần đăng nhập lại. Chốt an toàn: chỉ cấp được cho tài khoản **đã duyệt**; không tự gỡ quyền của chính mình; không gỡ được tài khoản gốc (`ADMIN_EMAIL`); luôn còn ít nhất một admin. Mỗi lần đổi quyền được ghi vào log máy chủ.
 
 ## Bước quét tệp trước khi tải lên
 Kết quả có 3 mức: **Hợp lệ** (xác nhận là xong), **Có cảnh báo** (phải bấm "Vẫn tải lên"), **Không thể tải lên** (không có nút xác nhận).
@@ -73,10 +82,16 @@ Vào **Quản trị → Mô hình AI**: dán API key Groq → bấm **Kiểm tra
 - Bot là công cụ hỗ trợ tra cứu, không thay thế ý kiến pháp lý chính thức.
 
 ## Kiểm thử
-`npm test` (không cần database hay API key) chạy 18 bài kiểm tra cho bước chuyển Markdown và tách đoạn, dùng tệp mẫu trong `test/fixtures/`.
+`npm test` chạy 23 bài kiểm tra không cần database hay API key (chuyển Markdown, tách đoạn, bộ giữ nhịp embedding), dùng tệp mẫu trong `test/fixtures/`.
+
+Bài kiểm thử end-to-end (`test/e2e.test.js`: phân quyền admin, lập chỉ mục nền với Voyage giả **thật sự trả 429 nếu vượt hạn mức**, khởi động lại giữa chừng, lỗi và thử lại) chỉ chạy khi có database thử:
+```
+TEST_DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/trolyai_test npm test
+```
+Tên database bắt buộc chứa chữ `test` vì bài kiểm tra **xóa sạch dữ liệu** trong đó (cần PostgreSQL có pgvector). Không bao giờ trỏ vào database thật.
 
 ## Nâng cấp từ bản cũ
-Khởi động lại là xong: `schema.sql` tự thêm cột `documents.markdown`. Tài liệu đã lập chỉ mục trước đây vẫn tra cứu bình thường nhưng chưa có bản Markdown và nhãn trích dẫn chưa có đường dẫn Chương. Muốn có, tải lại tệp (tắt/xóa bản cũ). Lưu ý: số tự động đánh bằng chức năng đánh số của Word có thể không nằm trong chữ của tệp `.docx`, hãy kiểm tra ở bản Markdown xem trước.
+Khởi động lại là xong: `schema.sql` tự thêm các cột `documents.markdown`, `status`, `error` (tài liệu cũ mặc định `ready`). Tài liệu đã lập chỉ mục trước đây vẫn tra cứu bình thường nhưng chưa có bản Markdown và nhãn trích dẫn chưa có đường dẫn Chương. Muốn có, tải lại tệp (tắt/xóa bản cũ). Lưu ý: số tự động đánh bằng chức năng đánh số của Word có thể không nằm trong chữ của tệp `.docx`, hãy kiểm tra ở bản Markdown xem trước.
 
 ## Chưa có
 OCR tự động, trả lời dạng streaming, 👍/👎, giới hạn số câu hỏi mỗi người, đặt lại mật khẩu, lập chỉ mục chạy nền.

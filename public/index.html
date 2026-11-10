@@ -102,7 +102,7 @@ th{font-size:13px;color:var(--muted);font-weight:600;background:var(--bg)}
 tr:last-child td{border-bottom:0}
 .tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12.5px;font-weight:600}
 .t-ok{background:var(--ok-bg);color:var(--ok)}.t-warn{background:var(--warn-bg);color:var(--warn)}.t-idle{background:var(--idle-bg);color:var(--idle)}
-.fname{color:var(--muted);font-size:12.5px}
+.fname{color:var(--muted);font-size:12.5px}.bar{height:6px;border-radius:3px;background:var(--line);overflow:hidden;margin-top:6px;max-width:240px}.bar>i{display:block;height:100%;background:var(--brand);transition:width .4s}.err{color:#b3382c;font-size:12.5px;margin-top:4px}
 .acts{display:flex;gap:6px}
 form.f{display:grid;gap:14px;background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:18px}
 label{display:grid;gap:5px;font-weight:600;font-size:14px}
@@ -330,7 +330,7 @@ function toast(m){var t=$("toast");t.textContent=m;t.classList.add("on");clearTi
 
 /* ---------- Gọi API ---------- */
 var welcome="Xin chào, tôi là trợ lý AI. Bạn cần tra cứu văn bản, giải thích quy định hay xem một điều khoản nào?";
-var tok=null,cid=null,busy=false,filt="all",docs=[],users=[],limits={},pending=null;
+var tok=null,cid=null,busy=false,filt="all",docs=[],users=[],limits={},pending=null,scanId=null,meId=null,docTimer=null;
 try{tok=localStorage.getItem("t")}catch(e){}
 function keep(){try{if(tok)localStorage.setItem("t",tok);else localStorage.removeItem("t")}catch(e){}}
 async function api(path,method,body,keepSession){
@@ -410,6 +410,7 @@ $("fReg").addEventListener("submit",async function(e){
 });
 
 async function enter(u){
+  meId=u.id;
   document.body.setAttribute("data-auth","in");
   $("uName").textContent=u.name;
   var g=hiInfo();$("hiText").textContent=g.t;$("hiIcon").innerHTML=g.i;
@@ -495,18 +496,28 @@ $("q").addEventListener("keydown",function(e){if(e.key==="Enter"&&!e.shiftKey){e
 $("chips").addEventListener("click",function(e){var c=e.target.closest("[data-s]");if(c)send(c.dataset.s)});
 
 /* ---------- Quản trị: tài liệu ---------- */
-function armDelete(btn,fn){
+function armDelete(btn,fn,ask){
   if(btn.dataset.arm){fn();return}
-  btn.dataset.arm="1";btn.textContent="Bấm lại để xóa";
-  setTimeout(function(){if(btn.isConnected){delete btn.dataset.arm;btn.textContent="Xóa"}},3000);
+  var orig=btn.textContent;btn.dataset.arm="1";btn.textContent=ask||"Bấm lại để xóa";
+  setTimeout(function(){if(btn.isConnected){delete btn.dataset.arm;btn.textContent=orig}},3000);
 }
-async function loadDocs(){try{if(!limits.max_file_mb)limits=await api("/api/admin/limits");docs=await api("/api/admin/docs");renderDocs()}catch(e){toast(e.message)}}
+async function loadDocs(){
+  clearTimeout(docTimer);
+  try{
+    if(!limits.max_file_mb)limits=await api("/api/admin/limits");
+    docs=await api("/api/admin/docs");renderDocs();
+    if(docs.some(function(d){return d.status==="processing"}))docTimer=setTimeout(loadDocs,5000);   /* đang lập chỉ mục nền → tự cập nhật tiến độ */
+  }catch(e){toast(e.message)}
+}
 function renderDocs(){
   var h="";
   docs.forEach(function(d){
+    var st=d.status==="processing"?'<span class="tag t-warn">Đang lập chỉ mục</span><div class="bar"><i style="width:'+Math.round(100*d.embedded/Math.max(1,d.chunk_count))+'%"></i></div>'
+      :d.status==="error"?'<span class="tag t-bad">Lập chỉ mục lỗi</span><div class="err">'+esc(d.error||"")+'</div>'
+      :'<span class="tag '+(d.active?"t-ok":"t-idle")+'">'+(d.active?"Còn hiệu lực":"Đã tắt")+'</span>';
     h+='<tr><td><b>'+esc(d.title)+'</b><div class="fname">'+esc(d.filename||"")+'</div></td><td>'+esc(d.doc_number||"–")+'</td>'+
-      '<td><span class="tag '+(d.active?"t-ok":"t-idle")+'">'+(d.active?"Còn hiệu lực":"Đã tắt")+'</span></td><td>'+d.chunk_count+'</td>'+
-      '<td><div class="acts"><button class="btn sm" data-tg="'+d.id+'">'+(d.active?"Tắt hiệu lực":"Bật hiệu lực")+'</button><button class="btn sm" data-md="'+d.id+'">Markdown</button><button class="btn sm danger" data-dd="'+d.id+'">Xóa</button></div></td></tr>';
+      '<td>'+st+'</td><td>'+(d.status==="ready"?d.chunk_count:d.embedded+" / "+d.chunk_count)+'</td>'+
+      '<td><div class="acts">'+(d.status==="error"?'<button class="btn sm primary" data-rt="'+d.id+'">Thử lại</button>':"")+'<button class="btn sm" data-tg="'+d.id+'">'+(d.active?"Tắt hiệu lực":"Bật hiệu lực")+'</button><button class="btn sm" data-md="'+d.id+'">Markdown</button><button class="btn sm danger" data-dd="'+d.id+'">Xóa</button></div></td></tr>';
   });
   $("docRows").innerHTML=h||'<tr><td colspan="5" style="text-align:center;color:var(--muted)">Chưa có tài liệu nào. Hãy tải văn bản đầu tiên lên.</td></tr>';
   $("sDocs").textContent=docs.length;
@@ -514,9 +525,10 @@ function renderDocs(){
   $("sChunks").textContent=docs.reduce(function(a,d){return a+d.chunk_count},0);
 }
 $("docRows").addEventListener("click",async function(e){
-  var t=e.target.closest("[data-tg]"),d=e.target.closest("[data-dd]"),m=e.target.closest("[data-md]");
+  var t=e.target.closest("[data-tg]"),d=e.target.closest("[data-dd]"),m=e.target.closest("[data-md]"),rt=e.target.closest("[data-rt]");
   try{
-    if(m){
+    if(rt){await api("/api/admin/docs/"+rt.dataset.rt+"/retry","POST");toast("Đang lập chỉ mục lại…");loadDocs()}
+    else if(m){
       var res=await fetch("/api/admin/docs/"+m.dataset.md+"/markdown",{headers:{Authorization:"Bearer "+tok}});
       if(!res.ok)throw new Error((await res.json().catch(function(){return {}})).error||"Không tải được bản Markdown.");
       var doc2=docs.find(function(x){return x.id===m.dataset.md}),a=document.createElement("a");
@@ -530,12 +542,12 @@ $("docRows").addEventListener("click",async function(e){
 /* Quét trước, xác nhận rồi mới lập chỉ mục */
 function fmtMB(n){return (n<10?n.toFixed(1):Math.round(n))+" MB"}
 function renderScan(rep){
-  var box=$("scanBox"),lv=rep.level,f=rep.file||{},st=rep.stats;
+  var box=$("scanBox"),lv=rep.level,f=rep.file||{},st=rep.stats;scanId=rep.scan_id||null;
   var tag=lv==="ok"?'<span class="tag t-ok">Hợp lệ</span>':lv==="warn"?'<span class="tag t-warn">Có cảnh báo</span>':'<span class="tag t-bad">Không thể tải lên</span>';
   var info=[fmtMB(f.size_mb||0)];
   if(f.type)info.push({pdf:"PDF",docx:"Word",html:"HTML",markdown:"Markdown"}[f.type]||"Văn bản");
   if(f.pages)info.push(f.pages+" trang");
-  if(st)info.push(st.chunks+" đoạn","~"+st.est_tokens.toLocaleString("vi-VN")+" token","~"+st.est_mb+" MB trong database (đang dùng "+st.db_used_mb+" / "+st.db_limit_mb+" MB)");
+  if(st)info.push(st.chunks+" đoạn","~"+st.est_tokens.toLocaleString("vi-VN")+" token","lập chỉ mục nền ~"+st.est_minutes+" phút","~"+st.est_mb+" MB trong database (đang dùng "+st.db_used_mb+" / "+st.db_limit_mb+" MB)");
   var items=(rep.issues||[]).map(function(i){return '<li class="i-'+i.level+'">'+esc(i.text)+'</li>'}).join("");
   var btn=lv==="ok"?'<button class="btn primary" data-sc="go">Xác nhận tải lên</button>':lv==="warn"?'<button class="btn danger" data-sc="go">Vẫn tải lên</button>':"";
   box.className="scan lv-"+lv;
@@ -546,7 +558,7 @@ function renderScan(rep){
     '<div class="acts"><button class="btn" data-sc="cancel">Hủy</button>'+btn+'</div>';
   box.hidden=false;
 }
-function clearScan(){pending=null;$("scanBox").hidden=true;$("scanBox").innerHTML=""}
+function clearScan(){pending=null;scanId=null;$("scanBox").hidden=true;$("scanBox").innerHTML=""}
 $("dPick").onclick=function(){$("dFile").click()};
 $("dFile").onchange=async function(){
   var f=this.files[0];this.value="";if(!f)return;
@@ -564,12 +576,20 @@ $("dFile").onchange=async function(){
   b.disabled=false;b.textContent="Chọn tệp để quét";
 };
 async function commitDoc(btn,force){
-  if(!pending)return;
-  var fd=new FormData();fd.append("title",$("dTitle").value);fd.append("doc_number",$("dNum").value);
-  fd.append("force",force?"true":"false");fd.append("file",pending);
-  btn.disabled=true;btn.textContent="Đang lập chỉ mục…";
-  try{await api("/api/admin/docs","POST",fd);toast("Đã tải lên và lập chỉ mục.");clearScan();$("dTitle").value="";$("dNum").value="";loadDocs()}
-  catch(x){toast(x.message);btn.disabled=false;btn.textContent=force?"Vẫn tải lên":"Xác nhận tải lên"}
+  if(!pending&&!scanId)return;
+  var body;   /* có scan_id thì chỉ gửi thông tin nhỏ, không tải lại tệp */
+  if(scanId)body={scan_id:scanId,title:$("dTitle").value,doc_number:$("dNum").value,force:!!force};
+  else{body=new FormData();body.append("title",$("dTitle").value);body.append("doc_number",$("dNum").value);body.append("force",force?"true":"false");body.append("file",pending)}
+  btn.disabled=true;btn.textContent="Đang gửi…";
+  try{
+    var d=await api("/api/admin/docs","POST",body);
+    toast("Đã nhận tài liệu. Đang lập chỉ mục nền (~"+(d.est_minutes||1)+" phút), bạn có thể làm việc khác.");
+    clearScan();$("dTitle").value="";$("dNum").value="";loadDocs()
+  }catch(x){
+    toast(x.message);
+    if(/hết hạn/.test(x.message)){clearScan();return}
+    btn.disabled=false;btn.textContent=force?"Vẫn tải lên":"Xác nhận tải lên"
+  }
 }
 $("scanBox").addEventListener("click",function(e){
   var b=e.target.closest("[data-sc]");if(!b)return;
@@ -585,15 +605,20 @@ function renderUsers(){
   var list=users.filter(function(x){return filt==="all"||x.status===filt}),h="";
   list.forEach(function(u){
     var tag=u.role==="admin"?'<span class="tag t-idle">Quản trị viên</span>':u.status==="pending"?'<span class="tag t-warn">Chờ duyệt</span>':'<span class="tag t-ok">Đã duyệt</span>';
-    var act=(u.status==="pending"?'<button class="btn sm primary" data-ap="'+u.id+'">Duyệt</button>':"")+(u.role==="admin"?"":'<button class="btn sm danger" data-del="'+u.id+'">Xóa</button>');
+    var act=(u.status==="pending"?'<button class="btn sm primary" data-ap="'+u.id+'">Duyệt</button>':"")+
+      (u.status==="approved"&&u.role!=="admin"?'<button class="btn sm" data-rg="'+u.id+'">Cấp quyền admin</button>':"")+
+      (u.role==="admin"&&!u.is_root&&u.id!==meId?'<button class="btn sm" data-rv="'+u.id+'">Gỡ quyền admin</button>':"")+
+      (u.role==="admin"?"":'<button class="btn sm danger" data-del="'+u.id+'">Xóa</button>');
     h+='<tr><td><b>'+esc(u.display_name)+'</b></td><td>'+esc(u.email)+'</td><td>'+new Date(u.created_at).toLocaleDateString("vi-VN")+'</td><td>'+tag+'</td><td><div class="acts">'+act+'</div></td></tr>';
   });
   $("userRows").innerHTML=h;$("uEmpty").hidden=list.length>0;
 }
 $("userRows").addEventListener("click",async function(e){
-  var a=e.target.closest("[data-ap]"),d=e.target.closest("[data-del]");
+  var a=e.target.closest("[data-ap]"),d=e.target.closest("[data-del]"),g=e.target.closest("[data-rg]"),v=e.target.closest("[data-rv]");
   try{
-    if(a){await api("/api/admin/users/"+a.dataset.ap+"/approve","POST");toast("Đã duyệt tài khoản.");loadUsers()}
+    if(g)armDelete(g,async function(){await api("/api/admin/users/"+g.dataset.rg+"/role","POST",{role:"admin"});toast("Đã cấp quyền quản trị viên.");loadUsers()},"Bấm lại để cấp");
+    else if(v)armDelete(v,async function(){await api("/api/admin/users/"+v.dataset.rv+"/role","POST",{role:"user"});toast("Đã gỡ quyền quản trị viên.");loadUsers()},"Bấm lại để gỡ");
+    else if(a){await api("/api/admin/users/"+a.dataset.ap+"/approve","POST");toast("Đã duyệt tài khoản.");loadUsers()}
     else if(d)armDelete(d,async function(){await api("/api/admin/users/"+d.dataset.del,"DELETE");toast("Đã xóa tài khoản.");loadUsers()});
   }catch(x){toast(x.message)}
 });

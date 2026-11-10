@@ -29,6 +29,9 @@ create table if not exists documents (
 );
 -- Bản Markdown của tệp gốc (kết quả bước chuyển đổi), dùng để xem lại hoặc tách đoạn lại mà không cần tải lên lần nữa
 alter table documents add column if not exists markdown text;
+-- Trạng thái lập chỉ mục chạy nền. Tài liệu cũ mặc định 'ready'.
+alter table documents add column if not exists status text not null default 'ready';
+alter table documents add column if not exists error text;
 create table if not exists chunks (
   id bigserial primary key,
   document_id uuid not null references documents on delete cascade,

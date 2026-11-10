@@ -2,13 +2,16 @@ require('dotenv').config();
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const express = require('express'), multer = require('multer'), bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
-const { analyze, embed } = require('./lib/ingest');
+const { analyze, embed, estTokens, estMinutes } = require('./lib/ingest');
+const { createIndexer } = require('./lib/indexer');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, idleTimeoutMillis: 30000 });
+const indexer = createIndexer(pool);
 const GROQ = process.env.GROQ_URL || 'https://api.groq.com/openai/v1';
 const DEFAULT_MODEL = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
 const KEY = process.env.APP_SECRET ? crypto.createHash('sha256').update(process.env.APP_SECRET).digest() : null;
 const num = (v, d) => Number(v) > 0 ? Number(v) : d;
+const rootEmail = () => (process.env.ADMIN_EMAIL || '').trim().toLowerCase();
 const LIM = {
   maxFileMB: num(process.env.MAX_FILE_MB, 20), warnFileMB: num(process.env.WARN_FILE_MB, 8),
   warnChunks: num(process.env.WARN_CHUNKS, 300), maxChunks: num(process.env.MAX_CHUNKS, 1200),
@@ -117,7 +120,7 @@ app.post('/api/logout', auth, async (q, r) => {
   await pool.query('delete from sessions where token_hash = $1', [sha(q.token)]);
   r.json({ ok: true });
 });
-app.get('/api/me', auth, (q, r) => r.json({ name: q.me.display_name, role: q.me.role }));
+app.get('/api/me', auth, (q, r) => r.json({ id: q.me.id, name: q.me.display_name, role: q.me.role }));
 
 // ---- Thiết lập bot ----
 app.get('/api/settings', auth, async (q, r) => {
@@ -171,13 +174,27 @@ app.put('/api/admin/ai', auth, admin, async (q, r) => {
 });
 
 // ---- Tài liệu: quét trước, xác nhận rồi mới lập chỉ mục ----
-async function scan(file, body) {
+// Kết quả quét (đã chuyển Markdown + tách đoạn) được giữ ở máy chủ 20 phút để bước xác nhận không phải tải tệp lên lần nữa.
+const SCANS = new Map(), SCAN_TTL = 20 * 60 * 1000;
+function rememberScan(user, prep) {
+  const now = Date.now();
+  for (const [k, v] of SCANS) if (now - v.at > SCAN_TTL) SCANS.delete(k);
+  while (SCANS.size >= 6) SCANS.delete(SCANS.keys().next().value);
+  const id = crypto.randomUUID(); SCANS.set(id, { user, at: now, prep }); return id;
+}
+async function prepare(file) {
   const name = Buffer.from(file.originalname, 'latin1').toString('utf8');
   const a = await analyze(file.buffer, name);
+  a.text = '';                                              // chữ gốc không cần giữ lại, tiết kiệm bộ nhớ
+  return { name, size: file.size, a };
+}
+// Các kiểm tra phụ thuộc database (dung lượng, trùng lặp): chạy lại lúc xác nhận để luôn dùng số liệu mới nhất
+async function check(prep, body) {
+  const { name, a } = prep;
   const issues = [...a.issues], add = (level, text) => issues.push({ level, text });
-  const sizeMB = file.size / 1048576, n = a.chunks.length;
+  const sizeMB = prep.size / 1048576, n = a.chunks.length;
   const bytes = a.chunks.reduce((s, c) => s + Buffer.byteLength(c.heading + c.content), 0);
-  const tokens = Math.ceil(a.chunks.reduce((s, c) => s + c.heading.length + c.content.length, 0) / 3);
+  const tokens = a.chunks.reduce((s, c) => s + estTokens(c.heading + '\n' + c.content), 0), minutes = estMinutes(tokens);
   const mdBytes = Buffer.byteLength(a.markdown || '');
   const estMB = (n * 8192 + bytes + mdBytes) / 1048576;   // vector 1024 chiều + chỉ mục + văn bản + bản Markdown
   const used = Number((await pool.query('select pg_database_size(current_database()) as s')).rows[0].s) / 1048576;
@@ -187,7 +204,7 @@ async function scan(file, body) {
   else if (n > LIM.warnChunks) add('warn', `Văn bản tách thành ${n} đoạn (ngưỡng cảnh báo ${LIM.warnChunks}), việc lập chỉ mục có thể mất vài phút.`);
   if (n && used + estMB > LIM.dbMB) add('block', `Dung lượng database sẽ vượt giới hạn: đang dùng ${used.toFixed(0)} MB, tệp này cần thêm khoảng ${estMB.toFixed(1)} MB, giới hạn ${LIM.dbMB} MB. Hãy xóa bớt tài liệu cũ hoặc nâng gói.`);
   else if (n && used + estMB > LIM.dbMB * 0.8) add('warn', `Database sắp đầy: sau khi thêm sẽ dùng khoảng ${(used + estMB).toFixed(0)} / ${LIM.dbMB} MB.`);
-  if (tokens > 500000) add('warn', `Cần khoảng ${tokens.toLocaleString('vi-VN')} token để tạo embedding (Voyage), có thể chạm giới hạn tốc độ.`);
+  if (n && minutes >= 10) add('warn', `Tạo embedding sẽ mất khoảng ${minutes} phút (chạy nền, vẫn dùng chatbot bình thường). Thêm phương thức thanh toán ở Voyage rồi đặt EMBED_RPM/EMBED_TPM để nhanh hơn.`);
 
   if (a.hash) {
     const d = (await pool.query('select title from documents where content_hash = $1 limit 1', [a.hash])).rows[0];
@@ -202,7 +219,7 @@ async function scan(file, body) {
   return { name, chunks: a.chunks, hash: a.hash, markdown: a.markdown, report: {
     level, issues,
     file: { name, size_mb: +sizeMB.toFixed(2), type: a.type, pages: a.pages },
-    stats: { chunks: n, est_tokens: tokens, est_mb: +estMB.toFixed(2), db_used_mb: +used.toFixed(1), db_limit_mb: LIM.dbMB },
+    stats: { chunks: n, est_tokens: tokens, est_minutes: minutes, est_mb: +estMB.toFixed(2), db_used_mb: +used.toFixed(1), db_limit_mb: LIM.dbMB },
     preview: a.chunks.slice(0, 4).map(c => c.heading),
     markdown_preview: (a.markdown || '').slice(0, 3000),
     markdown_chars: (a.markdown || '').length
@@ -211,39 +228,60 @@ async function scan(file, body) {
 
 app.get('/api/admin/limits', auth, admin, (q, r) => r.json({ max_file_mb: LIM.maxFileMB, warn_file_mb: LIM.warnFileMB }));
 app.get('/api/admin/docs', auth, admin, async (q, r) => {
-  const { rows } = await pool.query('select id, title, doc_number, filename, active, chunk_count, created_at from documents order by created_at desc');
+  const { rows } = await pool.query(`select d.id, d.title, d.doc_number, d.filename, d.active, d.chunk_count, d.status, d.error, d.created_at,
+            (select count(*) from chunks c where c.document_id = d.id and c.embedding is not null)::int as embedded
+     from documents d order by d.created_at desc`);
   r.json(rows);
 });
 app.post('/api/admin/docs/scan', auth, admin, up.single('file'), async (q, r) => {
   if (!q.file) return r.status(400).json({ error: 'Chưa chọn tệp.' });
-  r.json((await scan(q.file, q.body)).report);
+  const prep = await prepare(q.file), s = await check(prep, q.body);
+  s.report.scan_id = rememberScan(q.me.id, prep);
+  r.json(s.report);
 });
+// Xác nhận lập chỉ mục: gửi { scan_id, title, doc_number, force } (không tải lại tệp). Vẫn nhận tệp trực tiếp nếu không có scan_id.
+// Chỉ GHI các đoạn vào database rồi trả lời ngay; tạo embedding chạy nền (lib/indexer.js).
 app.post('/api/admin/docs', auth, admin, up.single('file'), async (q, r) => {
-  if (!q.file) return r.status(400).json({ error: 'Chưa chọn tệp.' });
-  const s = await scan(q.file, q.body);   // quét lại ở máy chủ, không tin kết quả từ trình duyệt
+  const body = q.body || {}, force = body.force === true || body.force === 'true';
+  let prep;
+  if (body.scan_id) {
+    const c = SCANS.get(String(body.scan_id));
+    if (!c || c.user !== q.me.id || Date.now() - c.at > SCAN_TTL)
+      return r.status(410).json({ error: 'Kết quả quét đã hết hạn (quá 20 phút hoặc máy chủ vừa khởi động lại). Hãy chọn lại tệp để quét.', expired: true });
+    prep = c.prep;
+  } else if (q.file) prep = await prepare(q.file);
+  else return r.status(400).json({ error: 'Chưa chọn tệp.' });
+  if (!process.env.VOYAGE_API_KEY) return r.status(503).json({ error: 'Chưa cấu hình VOYAGE_API_KEY nên chưa thể lập chỉ mục.' });
+
+  const s = await check(prep, body);   // kiểm tra lại với số liệu database hiện tại
   if (s.report.level === 'block')
     return r.status(422).json({ error: 'Tệp không đạt yêu cầu: ' + s.report.issues.filter(i => i.level === 'block').map(i => i.text).join(' '), report: s.report });
-  if (s.report.level === 'warn' && q.body.force !== 'true')
+  if (s.report.level === 'warn' && !force)
     return r.status(409).json({ error: 'Tệp có cảnh báo, cần xác nhận lại.', report: s.report });
-  const vecs = await embed(s.chunks.map(c => c.heading + '\n' + c.content), 'document');
   const c = await pool.connect();
+  let doc;
   try {
     await c.query('begin');
-    const { rows: [doc] } = await c.query(
-      'insert into documents(title, doc_number, filename, content_hash, chunk_count, markdown) values ($1,$2,$3,$4,$5,$6) returning id, title, doc_number, chunk_count',
-      [String(q.body.title || '').trim().slice(0, 200) || s.name.replace(/\.[^.]+$/, ''),
-       String(q.body.doc_number || '').trim().slice(0, 60) || null, s.name, s.hash, s.chunks.length, s.markdown]);
-    for (let i = 0; i < s.chunks.length; i += 100) {
-      const part = s.chunks.slice(i, i + 100), vals = [], ph = [];
-      part.forEach((ch, j) => {
-        vals.push(doc.id, ch.heading, ch.content, JSON.stringify(vecs[i + j]));
-        ph.push(`($${j * 4 + 1},$${j * 4 + 2},$${j * 4 + 3},$${j * 4 + 4}::vector)`);
-      });
-      await c.query('insert into chunks(document_id, heading, content, embedding) values ' + ph.join(','), vals);
+    doc = (await c.query(
+      "insert into documents(title, doc_number, filename, content_hash, chunk_count, markdown, status) values ($1,$2,$3,$4,$5,$6,'processing') returning id, title, doc_number, chunk_count, status",
+      [String(body.title || '').trim().slice(0, 200) || s.name.replace(/\.[^.]+$/, ''),
+       String(body.doc_number || '').trim().slice(0, 60) || null, s.name, s.hash, s.chunks.length, s.markdown])).rows[0];
+    for (let i = 0; i < s.chunks.length; i += 200) {
+      const part = s.chunks.slice(i, i + 200), vals = [], ph = [];
+      part.forEach((ch, j) => { vals.push(doc.id, ch.heading, ch.content); ph.push(`($${j * 3 + 1},$${j * 3 + 2},$${j * 3 + 3})`); });
+      await c.query('insert into chunks(document_id, heading, content) values ' + ph.join(','), vals);
     }
     await c.query('commit');
-    r.json(doc);
   } catch (e) { await c.query('rollback'); throw e; } finally { c.release(); }
+  if (body.scan_id) SCANS.delete(String(body.scan_id));
+  indexer.kick();
+  r.status(202).json({ ...doc, est_minutes: s.report.stats.est_minutes });
+});
+app.post('/api/admin/docs/:id/retry', auth, admin, async (q, r) => {
+  const { rowCount } = await pool.query("update documents set status = 'processing', error = null where id = $1 and status = 'error'", [q.params.id]);
+  if (!rowCount) return r.status(400).json({ error: 'Tài liệu này không ở trạng thái lỗi.' });
+  indexer.kick();
+  r.json({ ok: true });
 });
 app.get('/api/admin/docs/:id/markdown', auth, admin, async (q, r) => {
   if (!/^[0-9a-f-]{36}$/i.test(q.params.id)) return r.status(404).json({ error: 'Không tìm thấy tài liệu.' });
@@ -267,11 +305,31 @@ app.delete('/api/admin/docs/:id', auth, admin, async (q, r) => {
 
 // ---- Người dùng (admin) ----
 app.get('/api/admin/users', auth, admin, async (q, r) => {
-  const { rows } = await pool.query('select id, display_name, email, role, status, created_at from users order by created_at desc');
+  const { rows } = await pool.query('select id, display_name, email, role, status, created_at, lower(email) = $1 as is_root from users order by created_at desc', [rootEmail()]);
   r.json(rows);
 });
 app.post('/api/admin/users/:id/approve', auth, admin, async (q, r) => {
   await pool.query("update users set status = 'approved' where id = $1", [q.params.id]);
+  r.json({ ok: true });
+});
+// Cấp / gỡ quyền quản trị. Chốt an toàn: chỉ tài khoản đã duyệt mới được cấp; không tự gỡ quyền của mình;
+// không gỡ quyền tài khoản gốc (ADMIN_EMAIL); luôn còn ít nhất một quản trị viên.
+app.post('/api/admin/users/:id/role', auth, admin, async (q, r) => {
+  const role = (q.body || {}).role;
+  if (role !== 'admin' && role !== 'user') return r.status(400).json({ error: 'Vai trò không hợp lệ.' });
+  const u = (await pool.query('select id, email, role, status from users where id = $1', [q.params.id])).rows[0];
+  if (!u) return r.status(404).json({ error: 'Không tìm thấy tài khoản.' });
+  if (u.role === role) return r.json({ ok: true });
+  if (role === 'admin') {
+    if (u.status !== 'approved') return r.status(400).json({ error: 'Hãy duyệt tài khoản trước khi cấp quyền quản trị.' });
+    await pool.query("update users set role = 'admin' where id = $1", [u.id]);
+  } else {
+    if (u.id === q.me.id) return r.status(400).json({ error: 'Bạn không thể tự gỡ quyền quản trị của chính mình.' });
+    if (u.email.toLowerCase() === rootEmail()) return r.status(400).json({ error: 'Đây là tài khoản quản trị gốc (ADMIN_EMAIL), không thể gỡ quyền.' });
+    const { rowCount } = await pool.query("update users set role = 'user' where id = $1 and (select count(*) from users where role = 'admin') > 1", [u.id]);
+    if (!rowCount) return r.status(400).json({ error: 'Phải còn ít nhất một quản trị viên.' });
+  }
+  console.log(`Phân quyền: ${q.me.email} ${role === 'admin' ? 'cấp' : 'gỡ'} quyền quản trị của ${u.email}`);
   r.json({ ok: true });
 });
 app.delete('/api/admin/users/:id', auth, admin, async (q, r) => {
@@ -307,9 +365,13 @@ app.post('/api/chat', auth, async (q, r) => {
   try {
     const [qv] = await embed([text], 'query');
     hits = (await pool.query(
-      'select c.heading, c.content, d.title, d.doc_number from chunks c join documents d on d.id = c.document_id where d.active order by c.embedding <=> $1::vector limit 6',
+      'select c.heading, c.content, d.title, d.doc_number from chunks c join documents d on d.id = c.document_id where d.active and d.status = \'ready\' order by c.embedding <=> $1::vector limit 6',
       [JSON.stringify(qv)])).rows;
-  } catch (e) { console.error(e); return r.status(502).json({ error: 'Dịch vụ tìm kiếm tài liệu đang gặp sự cố, vui lòng thử lại sau.' }); }
+  } catch (e) {
+    console.error(e);
+    if (e.busy) return r.status(429).json({ error: e.message });
+    return r.status(502).json({ error: 'Dịch vụ tìm kiếm tài liệu đang gặp sự cố, vui lòng thử lại sau.' });
+  }
 
   const ctx = hits.map((h, i) => `[${i + 1}] ${h.title}${h.doc_number ? ' (' + h.doc_number + ')' : ''} – ${h.heading}\n${h.content}`).join('\n\n');
   const s = await getSettings();
@@ -352,4 +414,5 @@ app.use((e, q, r, n) => {
   if (!process.env.VOYAGE_API_KEY) console.warn('Cảnh báo: chưa có VOYAGE_API_KEY, chưa thể lập chỉ mục và tìm kiếm.');
   if (!KEY) console.warn('Cảnh báo: chưa có APP_SECRET, admin chưa thể lưu API key Groq trong giao diện.');
   app.listen(process.env.PORT || 3000, () => console.log('Máy chủ chạy tại cổng ' + (process.env.PORT || 3000)));
+  indexer.kick();   // chạy tiếp các tài liệu đang lập chỉ mục dở (nếu có)
 })();
