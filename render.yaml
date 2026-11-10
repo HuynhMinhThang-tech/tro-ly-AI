@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: tro-ly-ai
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /healthz
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      - key: DATABASE_URL
+        sync: false
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: APP_SECRET
+        generateValue: true
