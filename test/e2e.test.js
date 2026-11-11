@@ -158,6 +158,30 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
     assert.equal(mock.accepted - before, 1, 'ba lần hỏi cùng một câu chỉ được gọi Voyage một lần');
   });
 
+  await t.test('xóa lịch sử trò chuyện: chỉ xóa được của mình; xóa tất cả không đụng người khác', async () => {
+    const list = (await call('/api/conversations', { token: root })).data;
+    assert.ok(list.length >= 2, 'cần có sẵn vài cuộc trò chuyện từ các bước trước');
+    const target = list[0].id;
+    assert.equal((await call('/api/conversations/' + target, { method: 'DELETE', token: u2t })).status, 404, 'không xóa được hội thoại của người khác');
+    assert.equal((await call('/api/conversations/' + target, { token: root })).status, 200, 'hội thoại vẫn còn');
+    assert.equal((await call('/api/conversations/' + target, { method: 'DELETE', token: root })).status, 200);
+    assert.equal((await call('/api/conversations/' + target, { token: root })).status, 404);
+    assert.equal((await pool.query('select count(*)::int n from messages where conversation_id = $1', [target])).rows[0].n, 0, 'tin nhắn bị xóa theo');
+    assert.equal((await call('/api/conversations/' + target, { method: 'DELETE', token: root })).status, 404, 'xóa lần hai → không tìm thấy');
+    assert.equal((await call('/api/conversations/khong-phai-uuid', { method: 'DELETE', token: root })).status, 400);
+    assert.equal((await call('/api/conversations/' + target, { method: 'DELETE' })).status, 401, 'phải đăng nhập');
+
+    const u2 = (await pool.query("select id from users where email = 'u2@gmail.com'")).rows[0].id;
+    const c2 = (await pool.query("insert into conversations(user_id, title) values ($1, 'của u2') returning id", [u2])).rows[0].id;
+    await pool.query("insert into messages(conversation_id, role, content) values ($1, 'user', 'xin chào')", [c2]);
+
+    const all = await call('/api/conversations', { method: 'DELETE', token: root });
+    assert.equal(all.status, 200); assert.equal(all.data.deleted, list.length - 1);
+    assert.deepEqual((await call('/api/conversations', { token: root })).data, []);
+    assert.equal((await pool.query("select count(*)::int n from messages m join conversations c on c.id = m.conversation_id where c.user_id = (select id from users where email = 'root@gmail.com')")).rows[0].n, 0);
+    assert.equal((await call('/api/conversations/' + c2, { token: u2t })).status, 200, 'hội thoại của người khác còn nguyên');
+  });
+
   await t.test('xác nhận không cần tải lại tệp: scan_id sai/hết hạn → 410, tải trực tiếp vẫn dùng được', async () => {
     const bad = await call('/api/admin/docs', { method: 'POST', token: root, json: { scan_id: 'khong-co' } });
     assert.equal(bad.status, 410); assert.equal(bad.data.expired, true);

@@ -349,6 +349,16 @@ app.get('/api/conversations/:id', auth, async (q, r) => {
   const { rows } = await pool.query('select role, content, sources from messages where conversation_id = $1 order by id', [c.id]);
   r.json(rows);
 });
+// Xóa lịch sử trò chuyện: chỉ xóa được của chính mình; tin nhắn xóa theo (on delete cascade)
+app.delete('/api/conversations/:id', auth, async (q, r) => {
+  const { rowCount } = await pool.query('delete from conversations where id = $1 and user_id = $2', [q.params.id, q.me.id]);
+  if (!rowCount) return r.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
+  r.json({ ok: true });
+});
+app.delete('/api/conversations', auth, async (q, r) => {
+  const { rowCount } = await pool.query('delete from conversations where user_id = $1', [q.me.id]);
+  r.json({ ok: true, deleted: rowCount });
+});
 // Câu hỏi giống hệt (sau khi chuẩn hóa) dùng lại vector cũ, không tốn thêm yêu cầu Voyage
 const QCACHE = new Map();
 async function queryVec(text) {

@@ -61,6 +61,19 @@ aside h4{margin:14px 6px 4px;font-size:13px;color:var(--muted);font-weight:600}
 .item{display:block;width:100%;text-align:left;border:0;background:transparent;padding:8px 10px;border-radius:8px;color:var(--ink);font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .item:hover{background:var(--soft)}
 .item[aria-current="true"]{background:var(--soft);font-weight:600}
+.hrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:8px}
+.hrow h4{margin:6px 6px 4px}
+.linkbtn{border:0;background:transparent;color:var(--muted);font-size:13px;padding:4px 6px;border-radius:6px}
+.linkbtn:hover,.linkbtn[data-arm]{color:#b3382c}
+.crow{display:flex;align-items:center;gap:2px}
+.crow .item{flex:1;min-width:0}
+.cdel{flex:none;border:0;background:transparent;color:var(--muted);border-radius:8px;padding:6px 9px;font-size:16px;line-height:1;opacity:0}
+.crow:hover .cdel,.cdel:focus-visible,.cdel[data-arm]{opacity:1}
+.cdel:hover,.cdel[data-arm]{color:#b3382c;background:var(--soft)}
+.cdel[data-arm]{font-size:12px;font-weight:600;white-space:nowrap}
+@media (hover:none){.cdel{opacity:1}}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .linkbtn:hover,:root:not([data-theme="light"]) .linkbtn[data-arm],:root:not([data-theme="light"]) .cdel:hover,:root:not([data-theme="light"]) .cdel[data-arm]{color:#f08a7c}}
+:root[data-theme="dark"] .linkbtn:hover,:root[data-theme="dark"] .linkbtn[data-arm],:root[data-theme="dark"] .cdel:hover,:root[data-theme="dark"] .cdel[data-arm]{color:#f08a7c}
 
 /* user chat */
 .chat{flex:1;min-width:0;display:flex;flex-direction:column}
@@ -227,7 +240,7 @@ body[data-auth="in"] .auth{display:none}
     <section class="view" id="userView" aria-label="Giao diện người dùng">
       <aside>
         <button class="btn primary" id="newChat">+ Cuộc trò chuyện mới</button>
-        <h4>Gần đây</h4>
+        <div class="hrow"><h4>Gần đây</h4><button class="linkbtn" id="clearAll" hidden>Xóa tất cả</button></div>
         <div id="convList"></div>
       </aside>
       <div class="chat">
@@ -482,11 +495,26 @@ function newChat(){
 async function loadConvs(){
   try{
     var l=await api("/api/conversations");
-    $("convList").innerHTML=l.map(function(c){return '<button class="item" data-c="'+esc(c.id)+'"'+(c.id===cid?' aria-current="true"':'')+'>'+esc(c.title||"Cuộc trò chuyện")+'</button>'}).join("");
+    $("convList").innerHTML=l.map(function(c){return '<div class="crow"><button class="item" data-c="'+esc(c.id)+'"'+(c.id===cid?' aria-current="true"':'')+'>'+esc(c.title||"Cuộc trò chuyện")+'</button><button class="cdel" data-cd="'+esc(c.id)+'" title="Xóa cuộc trò chuyện này" aria-label="Xóa cuộc trò chuyện này">×</button></div>'}).join("");
+    $("clearAll").hidden=!l.length;
   }catch(e){}
 }
 $("newChat").onclick=newChat;
+$("clearAll").onclick=function(){   /* xóa toàn bộ lịch sử của tài khoản này: bấm 2 lần để xác nhận */
+  armDelete(this,async function(){
+    try{await api("/api/conversations","DELETE");toast("Đã xóa toàn bộ lịch sử trò chuyện.");newChat()}
+    catch(x){toast(x.message)}
+  },"Bấm lại để xóa hết");
+};
 $("convList").addEventListener("click",async function(e){
+  var d=e.target.closest("[data-cd]");
+  if(d){   /* xóa một cuộc trò chuyện: bấm 2 lần để xác nhận */
+    armDelete(d,async function(){
+      try{await api("/api/conversations/"+d.dataset.cd,"DELETE");toast("Đã xóa cuộc trò chuyện.");if(d.dataset.cd===cid)newChat();else loadConvs()}
+      catch(x){toast(x.message)}
+    },"Xóa?");
+    return;
+  }
   var b=e.target.closest("[data-c]");if(!b)return;
   try{
     var m=await api("/api/conversations/"+b.dataset.c);
