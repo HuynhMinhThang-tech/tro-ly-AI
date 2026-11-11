@@ -1,0 +1,229 @@
+# LUẬT PHÒNG CHÁY, CHỮA CHÁY VÀ c ứ u NẠN, c ứ u H ộ
+
+QUÓC HỘI CỘNG HÒA XẢ HỘI CHỦ NGHĨA VIỆT NAM
+
+Độc lập - Tự do - Hạnh phúc
+
+Luật số: 55/2024/QH15
+
+Căn cứ Hiến pháp nước Cộng hòa xã hội chủ nghĩa Việt Nam;
+
+Quốc hội ban hành Luật Phòng cháy, chữa chảy và cứu nạn, cứu hộ.
+
+## Chương I – QUY ĐỊNH CHUNG
+
+#### Điều 1. Phạm vi điều chỉnh
+
+Luật này quy định về phòng cháy, chữa cháy, cứu nạn, cứu hộ; lực lượng, phương tiện, bảo đảm điều kiện hoạt động và quyền, nghĩa vụ, trách nhiệm của cơ quan, tổ chức, hộ gia đình, cá nhân có liên quan trong hoạt động phòng cháy, chữa cháy, cửu nạn, cứu hộ.
+
+#### Điều 2. Giải thích từ ngữ
+
+Trong Luật này, các từ ngữ dưới đây được hiểu như sau:
+
+1. Cháy là phản ứng hóa học có tỏa nhiệt, phát ra ánh sáng hoặc khói, gây thiệt hại hoặc có khả năng gây thiệt hại về người, tài sản của cơ quan, tổ chức, cá nhân, ảnh hưởng đến kinh tế, môi trường, an ninh, trật tự.
+
+2. Phòng chảy là tổng hợp các hoạt động, biện pháp, giải pháp để hạn chế, loại trừ nguyên nhân, điều kiện, nguy cơ xảy ra cháy nhằm bảo đảm an toàn, giảm thiếu thiệt hại do cháy gây ra.
+
+3. Chữa cháy là tổng họp các hoạt động chống cháy lan, dập tắt đám cháy và các hoạt động khác đổ giảm thiểu thiệt hại do cháy gây ra.
+
+4. Tai nạn, sự cố là tình huống quy định tại điểm b khoản 1 Điều 32 của Luật này gây thiệt hại hoặc có khả năng gây thiệt hại về người, tài sản của cơ quan, tô chức, cá nhân cân phải cứu nạn, cúu hộ.
+
+5. Cứu nạn là hoạt động cứu người thoát khỏi nguy hiểm đang đe dọa đến tính mạng, sức khỏe trong các vụ cháy, tai nạn, sự cố và hoạt động tìm kiếm nạn nhân.
+
+6. Cứu hộ là hoạt động cứu phương tiện, tài sản thoát khỏi nguy hiểm trong các vụ cháy, tai nạn, sự cố.
+
+7. Cơ sở thuộc diện quản lý về phòng cháy, chũ'a cháy (sau đây gọi là cơ sở) là nhà, công trình, địa diêm được sử dụng đê ở, sản xuât, kinh doanh, hoạt động thương mại, làm việc hoặc mục đích khác, được xây dựng, hoạt động theo quy định của pháp luật, thuộc danh mục do Chính phủ quy định. Trong một cơ quan, to chức có thế có một hoặc nhiều cơ sở; trong một cơ sở có thể có một hoặc nhiều cơ quan, tổ chức.
+
+8. Cơ sở có nguy hiểm về cháy, nổ là cơ sở có nguy cơ cháy, nổ cao thuộc danh mục do Chính phủ quy định.
+
+9. Hàng hóa nguy hiểm về cháy, nỏ là hàng hóa có chứa các chất, vật phẩm có nguy cơ cháy, no ở dạng khí, dạng lỏng hoặc dạng rắn mà khi quản lý, vận chuyến, sử dụng có khả năng gây cháy, nổ, làm nguy hại đến tính mạng, sức khỏe con người, gây thiệt hại về tài sản, ảnh hưởng đến môi trường, an ninh, trật tự, thuộc danh mục do Chính phủ quy định.
+
+10. Phương tiện giao thông có yêu câu về bảo đảm an toàn phòng cháy và chữa cháy (sau đây gọi là phương tiện giao thông) là phương tiện giao thông cơ giói đưòng bộ, phương tiện giao thông đường sắt, phương tiện thủy nội địa, tàu biên được sản xuất, lắp ráp, đóng mới, hoán cải để vận tải hành khách, hàng hóa nguy hiếm về cháy, no; trường hợp là phương tiện giao thông cơ giới đường bộ vận tải hành khách thì phải trên 08 chỗ (không kể chỗ của người lái xe).
+
+11. Người đứng đầu cơ sở là người chịu trách nhiệm trước pháp luật trong tô chức thực hiện, duy trì điều kiện an toàn về phòng cháy, chữa cháy, cứu nạn, cứu hộ tại cơ sở, bao gồm: người đại diện theo pháp luật của cơ sở hoặc người được giao trực tiếp quản lý cơ sở; chủ hộ gia đình trực tiếp sử dụng nhà ở đối với nhà ở là cơ sở thuộc trường họp quy định tại khoản 7 Điều này.
+
+12. Lực lượng dân phòng là lực lượng do chính quyền địa phương thành lập để thực hiện nhiệm vụ phòng cháy, chữa cháy, cứu nạn, cứu hộ ở thôn, làng, ấp, bản, buôn, bon, phum, sóc (sau đây gọi chung là thôn), tổ dân phố, khu phố, khối phố, khóm, tiếu khu (sau đây gọi chung là tổ dân phố).
+
+13. Lực lượng phòng cháy, chũ’a cháy và cứu nạn, cứu hộ cơ sở là lực lượng kiêm nhiệm do người đứng đầu cơ sở thành lập để thực hiện nhiệm vụ phòng cháy, chữa cháy, cứu nạn, cửu hộ tại cơ sở.
+
+14. Lực lượng phòng cháy, chữa cháy và cứu nạn, cứu hộ chuyên ngành là lực lượng chuyên trách hoặc kiêm nhiệm do người đứng đầu cơ sở thành lập để thực hiện nhiệm vụ phòng cháy, chữa cháy, cứu nạn, cứu hộ tại một số cơ sở có nguy hiếm về cháy, nổ.
+
+15. Khu vực chữa chảy là khu vực được giới hạn trong một phạm vi nhất định, ở đó diễn ra các hoạt động chữa cháy của các lực lượng chức năng theo quy định của pháp luật.
+
+16. Khu vực cứu nạn, cứu hộ là khu vực được giới hạn trong một phạm vi nhất định, ở đó diễn ra các hoạt động cứu nạn, cứu hộ của các lực lượng chức năne theo quy định của pháp luât.
+
+17. Thẩm định thiết kế về phòng cháy và chữa cháy là việc xem xét, đánh giá sự tuân thủ các quy định của pháp luật, tiêu chuẩn, quy chuẩn kỹ thuật đuợc áp dụng đối với thiết kế về phòng cháy và chữa cháy trong dự án đầu tư xây dựng công trình, công trình, phưong tiện giao thông.
+
+18. Nghiệm thu về phòng cháy và chữa cháy là việc kiểm tra, đối chiếu thực tế thi công dự án đầu tư xây dựng công trình, công trình, phương tiện giao thông với hồ sơ thiết kế đã được thẩm định.
+
+19. Kiêm tra công tác nghiệm thu về phòng cháy và chữa cháy là việc cơ quan quản lý chuyên ngành có thẩm quyền kiểm tra kết quả nghiệm thu về phòng cháy và chữa cháy đối với dự án đầu tư xây dựng công trình, công trình, phương tiện giao thông.
+
+20. Cơ sở dữ liệu vê phòng cháy, chữa cháy, cứu nạn, cúv. hộ là cơ sở dữ liệu chuyên ngành đế phục vụ quản lý nhà nước về phòng cháy, chữa cháy, cửu nạn, cứu hộ và các mục đích khác; được kết nối, chia sẻ với Cơ sở dữ liệu tống hợp quốc gia và các cơ sở dữ liệu khác có liên quan.
+
+21. Cơ quan quản lý chuyên ngành là cơ quan thực hiện chức năng quản lý nhà nước về một lĩnh vực nhất định hên quan đến phòng cháy, chữa cháy, bao gồm: cơ quan Công an, cơ quan chuyên môn về xây dựng và cơ quan đăng kiểm.
+
+22. Hạ tầng phòng cháy và chữa cháy bao gồm mạng lưới trụ sở, doanh trại, công trình, hệ thống cung cấp nước, hệ thống giao thông và hệ thống thông tin liên lạc phục vụ phòng cháy và chữa cháy.
+
+#### Điều 3. Áp dụng pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ
+
+1. Hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ trên lãnh thô nước Cộng hòa xã hội chủ nghĩa Việt Nam thực hiện theo quy định của Luật này và quy định của pháp luật có liên quan.
+
+2. Hoạt động phòng cháy và chữa cháy rừng, trách nhiệm phòng cháy và chữa cháy rừng thực hiện theo quy định của pháp luật về lâm nghiệp.
+
+3. Trường hợp sự cố, thảm họa, thiên tai, dịch bệnh đã được ban bố tình trạng khấn cấp, ban bố cấp độ phòng thủ dân sự thì hoạt động cứu nạn, cứu hộ thực hiện theo quy định của pháp luật về tình trạng khẩn cấp, pháp luật về phòng thủ dân sự, quy định của Luật này và quy định khác của pháp luật có liên quan.
+
+#### Điều 4. Chính sách của Nhà nước về phòng cháy, chữa cháy, cứu nạn, cứu hộ
+
+1. Bảo đảm ngân sách nhà nước, cơ sở, vật chất, phương tiện, thiết bị hiện đại, nguồn nhân lực, chế độ, chính sách, các điều kiện hoạt động cho lực lượng Cảnh sát phòng cháy, chữa cháy và cúư nạn, cứu hộ; xây dựng lực lượng Cảnh sát phòng cháy, chữa cháy và cứu nạn, cứu hộ chính quy, tinh nhuệ, hiện đại, đáp ứng yêu cầu phòng cháy, chữa cháy, cứu nạn, cứu hộ trong mọi tình huống.
+
+2. Huy động, sử dụng các nguồn lực cho hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ. Dầu tư, xây dựng hệ thống Cơ sỏ' dữ liệu vồ phòng cháy, chữa cháy, cứu nạn, cứu hộ và truyền tin báo cháy bảo đảm kết nối, chia sẻ dữ liệu tại những nơi bố trí đơn vị Cảnh sát phòng cháy, chữa cháy và cứu nạn, cứu hộ.
+
+3. Đào tạo, bồi dưỡng, bảo đảm nguồn nhân lực trực tiếp thực hiện nhiệm vụ phòng cháy, chữa cháy, cún nạn, cứu hộ và nguồn nhân lực thực hiện thấm định thiết kế, kiểm tra công tác nghiệm thu, kiểm tra về phòng cháy và chữa cháy.
+
+4. Bố trí lực lượng, phương tiện phòng cháy, chữa cháy, cứu nạn, cứu hộ phù hợp với từng địa bàn cơ sở; khuyến khích cơ quan, tổ chức, cá nhân xây dựng, tham gia, duy trì các mô hình an toàn về phòng cháy, chữa cháy, cứu nạn, cứu hộ tại cộng đồng.
+
+5. Khuyến khích, tạo điều kiện để cơ quan, tổ chức, cá nhân nghiên cứu, ứng dụng khoa học và chuyển giao công nghệ trong hoạt động phòng cháy, chữa cháy, cửu nạn, cứu hộ, đầu tư, xây dựng, chuyển giao hệ thống, phương tiện, thiêt bị phục vụ hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ.
+
+6. Cơ quan, tổ chức, cá nhân tham gia phối họp, cộng tác, hỗ trợ, giúp đỡ cơ quan nhà nước thực hiện công tác phòng cháy, chữa cháy, cứu nạn, cứu hộ được hưởng chế độ, chính sách theo quy định của pháp luật căn cứ vào tính chất, mức độ đóng góp.
+
+#### Điều 5. Nguyên tắc phòng cháy, chữa cháy, cứu nạn, cứu hộ
+
+1. Tuân thủ Hiển pháp, pháp luật Việt Nam và điều ước quốc tế mà nước Cộng hòa xã hội chủ nghĩa Việt Nam là thành viên. Trường họp giữa Việt Nam và nước ngoài chưa có điều ước quốc tế thì hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ được thực hiện trên nguyên tắc có đi có lại hoặc yêu cầu đối ngoại nhưng không trái pháp luật Việt Nam, phù họp với pháp luật và tập quán quốc tế.
+
+2. Huy động sức mạnh tổng họp của toàn dân tham gia hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ; phát huy vai trò nòng cốt của lực lượng phòng cháy, chữa cháy và cứu nạn, cứu hộ.
+
+3. Chu động phòng ngừa, lấy phòng ngừa là chính; kịp thời phát hiện sơ hở, thiếu sót về phòng cháy, chữa cháy và có biện pháp khắc phục; xác định phòng cháy, phòng ngừa tai nạn, sự cố là nhiệm vụ thường xuyên.
+
+4. Chuẩn bị sẵn sàng lực lượng, phương tiện, phương án và các điều kiện cần thiết để kịp thời chữa cháy, cứu nạn, cứu hộ.
+
+5. Thống nhất chỉ huy, điều hành, phát huy vai trò của lực lượng, phương tiện, hậu cần tại chồ khi xảy ra cháy, tai nạn, sự cố; ưu tiên cứu người, cứu tài sản; mọi nguồn nước, chất chữa cháy phải được ưu tiên sử dụng cho chữa cháy.
+
+6. ứ ng dụng khoa học và công nghệ hiện đại trong hoạt động phòng cháy, chữa cháy, cứu nạn, cửu hộ.
+
+7. Mọi hành vi vi phạm pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ phải được phát hiện, ngăn chặn kịp thời và xử lý nghiêm minh theo quy định của pháp luật.
+
+8. Bảo đảm tính nhân đạo, công bằng, bình đẳng giới trong hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ.
+
+#### Điều 6. Báo cháy, báo tình huống cứu nạn, cứu hộ
+
+1. Người phát hiện cháy, tình huống cứu nạn, cửu hộ thì báo ngay cho lực lượng phòng cháy, chữa cháy và cứu nạn, cứu hộ, cơ quan Công an hoặc Uy ban nhân dân cấp xã nơi gần nhất.
+
+2. Thông tin báo cháy, báo tình huống cứu nạn, cứu hộ được thực hiện bằng hiệu lệnh, điện thoại hoặc tín hiệu từ thiết bị truyền tin báo cháy hoặc báo trực tiếp cho cơ quan, lực lượng quy định tại khoản 1 Điều này.
+
+Số điện thoại báo cháy, báo tình huống cứu nạn, cứu hộ được quy định thống nhất trong cả nước là 114.
+
+3. Lực lượng phòng cháy, chữa cháy và cứu nạn, cứu hộ, cơ quan Công an hoặc ủ y ban nhân dân cấp xã nhận được tin báo phải thông tin ngay cho lực lượng Cảnh sát phòng cháy, chữa cháy và cúư nạn, cứu hộ có thấm quyền đê giải quyết.
+
+#### Điều 7. Trách nhiệm quản lý nhà nước về phòng cháy, chữa cháy, cứu nan,cứu hô
+
+1. Chính phủ thống nhất quản lý nhà nước về phòng cháy, chữa cháy, cứu nạn, cứu hộ.
+
+2. Bộ Công an là cơ quan đầu mối giúp Chính phủ thống nhất thực hiện quản lý nhà nước về phòng cháy, chữa cháy, cứu nạn, cứu hộ.
+
+3. Bộ Quốc phòng, các Bộ, cơ quan ngang Bộ, trong phạm vi nhiệm vụ, quyền hạn của mình, phối hợp với Bộ Công an thực hiện quản lý nhà nước về phòng cháy, chữa cháy, cứu nạn, cứu hộ.
+
+4. ủ y ban nhân dân các cấp thực hiện quản lý nhà nước về phòng cháy, chữa cháy, cứu nạn, cứu hộ tại địa phương. Tại huyện nơi không tố chức đơn vị hành chính cấp xã thì ủ y ban nhân dân cấp huyện thực hiện các nhiệm vụ, quyền hạn của ủ y ban nhân dân cấp xã quy định tại Luật này.
+
+#### Điều 8. Trách nhiệm của CO' quan, t ổ chức, hộ gia đình, cá nhân trong hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ
+
+1. Phòng cháy, chữa cháy, cứu nạn, cứu hộ là trách nhiệm của cơ quan, tô chức, hộ gia đình, cá nhân hoạt động, sinh sống trên lãnh thổ nước Cộng hòa xã hội chủ nghĩa Việt Nam.
+
+2. Công dân từ đủ 18 tuổi trở lên, đủ sức khỏe có trách nhiệm tham gia vào Đội phòng cháy, chữa cháy và cứu nạn, cứu hộ cơ sở, Đội phòng cháy, chữa cháy và cứu nạn, cứu hộ chuyên ngành hoặc Đội dân phòng khi có yêu cầu.
+
+3. Người đứng đầu cơ sở có trách nhiệm sau đây:
+
+a) Tổ chức tuyên tmyền, phổ biến, giáo dục kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ; tố chức huấn luyện, bồi dưỡng nghiệp vụ phòng cháy, chừa cháy, cửu nạn, cửu hộ cho cac dổi tượng thuộc phạm vi quan lý;
+
+b) Thành lập, duy trì hoạt động Đội phòng cháy, chữa cháy và cứu nạn, cứu hộ cơ sở hoặc Đội phòng cháy, chữa cháy và cứu nạn, cửu hộ chuyên ngành theo quy định tại Điều 37 của Luật này hoặc phân công người thực hiện nhiệm vụ phòng cháy, chữa cháy, cứu nạn, cứu hộ thuộc phạm vi quản lý;
+
+c) Ban hành hoặc tham mưu người có thẩm quyền ban hành nội quy phòng cháy, chữa cháy, cứu nạn, cứu hộ;
+
+d) Tổ chức thực hiện, kiểm tra, đôn đốc, giám sát cơ quan, tổ chức, cá nhân thuộc phạm vi quản lý về việc thực hiện quy định, nội quy, biện pháp, yêu cầu và duy trì điều kiện an toàn về phòng cháy, chữa cháy, cứu nạn, cứu hộ;
+
+đ) Xây dựng, tố chức thực tập phương án chữa cháy, cứu nạn, cứu hộ theo quy định của pháp luật;
+
+e) Quyết định hoặc đề xuất người có thẩm quyền quyết định trang bị, duy trì tính năng sử dụng của phương tiện phòng cháy, chữa cháy, cứu nạn, cứu hộ; tổ chức chữa cháy, cứu nạn, cứu hộ; khắc phục hậu quả do cháy, tai nạn, sự cố gây ra;
+
+g) Lập, quản lý hồ sơ về phòng cháy, chữa cháy, cứu nạn, cứu hộ thuộc phạm vi quản lý; khai báo, cập nhật dữ liệu về phòng cháy, chữa cháy;
+
+h) Thực hiện nhiệm vụ khác về phòng cháy, chữa cháy, cứu nạn, cứu hộ theo quy định của pháp luật.
+
+4. Chủ phương tiện giao thông có trách nhiệm sau đây:
+
+a) Tổ chức tuyên truyền, phổ biến kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, círu hộ; tố chức huấn luyện, bồi dưỡng nghiệp vụ phòng cháy, chữa cháy, cứu nạn, cứu hộ cho các đối tượng thuộc phạm vi quản lý;
+
+b) Ban hành nội quy phòng cháy, chữa cháy, cứu nạn, cứu hộ;
+
+c) Tổ chức thực hiện, kiểm tra, đôn đốc, giám sát cá nhân thuộc phạm vi quản lý về việc thực hiện quy định, nội quy, biện pháp, yêu cầu và duy trì điều kiện an toàn về phòng cháy, chữa cháy, cứu nạn, cửu hộ;
+
+d) Trang bị, duy trì tính năng sử dụng của phương tiện phòng cháy, chữa cháy, cứu nạn, cứu hộ; tổ chức chừa cháy, cứu nạn, cứu hộ; khắc phục hậu quả do cháy, tai nạn, sự cố gây ra;
+
+đ) Xây dựng, tổ chức thực tập phương án chữa cháy, cứu nạn, cứu hộ theo quy định của pháp luật;
+
+e) Thực hiện nhiệm vụ khác về phòng cháy, chữa cháy, cứu nạn, cứu hộ theo quy định của pháp luật.
+
+5. Người quyết định đầu tư, chủ đầu tư, chủ sở hữu công trình, chủ phương tiện giao thông, cơ quan, tổ chức, cá nhân trong hoạt động đầu tư xây dựng công trình, sản xuất, lắp ráp, đóng mới, hoán cải phương tiện giao thông có trách nhiệm thực hiện các yêu cầu về phòng cháy và chữa cháy trong việc áp dụng tiêu chuấn, quy chuân kỹ thuật, thâm định, thi công, giám sát thi công, nghiệm thu vê phòng cháy và chùa cháy.
+
+6. Chủ hộ gia đình trực tiếp sử dụng nhà ở mà không phải là người đứng đầu cơ sở có trách nhiệm sau đây:
+
+a) Thực hiện quy định tại Điều 20 và Điều 21 của Luật này;
+
+b) Tuyên truyền, đôn đốc, nhắc nhở thành viên khác trong gia đình thực hiện pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ;
+
+c) Thường xuyên tự kiểm tra, phát hiện và khắc phục kịp thời nguy cơ gây cháy, no, tai nạn, sự cố;
+
+d) Thực hiện các nhiệm vụ khác về phòng cháy, chữa cháy, cứu nạn, cứu hộ theo quy định của pháp luật.
+
+7. Cá nhân có trách nhiệm sau đây:
+
+a) Chấp hành quy định, nội quy, biện pháp, yêu cầu về phòng cháy, chữa cháy, cứu nạn, cứu hộ của cơ quan, tổ chức hoặc người có thấm quyền theo quy định của pháp luật;
+
+b) Tìm hiểu kiến thức về phòng cháy, chữa cháy, cứu nạn, cúu hộ và kỹ năng thoát nạn, sử dụng dụng cụ, phương tiện phòng cháy, chữa cháy, cứu nạn, cứu hộ thông dụng;
+
+c) Bảo đảm an toàn trong sử dụng nguồn lửa, nguồn nhiệt, thiết bị, dụng cụ sinh lửa, sinh nhiệt, chất dễ cháy, nổ;
+
+d) Phát hiện, ngăn chặn nguy cơ trực tiếp gây cháy, no và các hành vi vi phạm quy định an toàn về phòng cháy, chữa cháy, cứu nạn, cứu hộ trong điều kiện, khả năng cho phép;
+
+đ) Tham gia chữa cháy, cứu nạn, cứu hộ khi được cơ quan, người có thâm quyền huy động; chấp hành yêu cầu, quyết định của người chỉ huy chữa cháy, người chỉ huy cứu nạn, cứu hộ khi tham gia chữa cháy, cứu nạn, cứu hộ.
+
+8. Trách nhiệm về phòng cháy, chữa cháy, cứu nạn, cúu hộ đối với trường hợp thuc, mượn, ở nhò' nhà ở được quy định như sau:
+
+a) Người cho thuê, cho mượn, cho ở nhờ nhà ở có trách nhiệm tuyên truyền, đôn đốc, nhắc nhở người thuê, mượn, ở nhờ thực hiện quy định của pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ;
+
+b) Người thuê, mượn, ở nhờ nhà ở có trách nhiệm theo quy định tại khoản 6 Điều này, trừ trường hợp có thỏa thuận khác với người cho thuê, mượn, O' nhờ nhà ơ.
+
+Trường họp thuê, mượn, ở nhờ nhà ở kết họp sản xuất, kinh doanh thì người thuê, mượn, ở nhờ còn có trách nhiệm bảo đảm điều kiện an toàn về phòng cháy theo quy định tại Điều 21 của Luật này.
+
+9. Cơ quan, tổ chức, cá nhân không thuộc đối tượng quy định tại khoản 3 Điều 50 của Luật này có trách nhiệm bảo đảm kinh phí cho hoạt động phòng cháy, chữa cháy, cứu nạn, cứu hộ trong phạm vi quản lý.
+
+10. Chính phủ quy định chi tiết điểm c và điểm g khoản 3, điểm b khoản 4 và khoản 5 Điều này.
+
+#### Điều 9. Trách nhiệm tuyên truyền, phổ biến, giáo dục kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ
+
+1. Cơ quan quản lý nhà nuớc về phòng cháy, chữa cháy, cứu nạn, cứu hộ chủ trì, phối họp với các cơ quan, tổ chức, cá nhân có liên quan thực hiện tuyên truyền, pho biến, giáo dục kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ.
+
+2. Cơ quan thông tin, truyền thông có trách nhiệm tổ chức tuyên truyền, phô biến, giáo dục kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ trên các phương tiện thông tin đại chúng.
+
+3. Bộ Giao thông vận tải chủ trì, phối họp với Bộ Công an tích họp, lồng ghép kiến thức, pháp luật và kỹ năng phòng cháy, chữa cháy, cửu nạn, cứu hộ vào nội dung đào tạo lái xe.
+
+4. Bộ Giáo dục và Đào tạo, Bộ Lao động - Thương binh và Xã hội, trong phạm vi nhiệm vụ, quyền hạn của mình, chủ trì, phối họp với Bộ Công an và Bộ, cơ quan ngang Bộ có liên quan xây dựng, tích họp, lồng ghép kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ vào chương trình giảng dạy và bảo đảm điều kiện thực hiện trong cơ sở giáo dục mầm non, cơ sở giáo dục phổ thông, cơ sở giáo dục nghề nghiệp, cơ sở giáo dục đại học phù họp với từng cấp học, ngành học.
+
+5. Bộ, cơ quan ngang Bộ, ủ y ban nhân dân các cấp, trong phạm vi nhiệm vụ, quyền hạn của mình, có trách nhiệm tổ chức tuyên truyền, phổ biến, giáo dục kiến thức, pháp luật về phòng cháy, chữa cháy và cứu nạn, cứu hộ, có hình thức tuyên truyền, phố biến, giáo dục phù họp với các đối tượng thuộc phạm vi quản lý.
+
+6. Đơn vị lực lượng vũ trang nhân dân, cơ quan, tổ chức, cơ sở giáo dục có trách nhiệm tuyên truyền, phổ biến, giáo dục kiến thức, pháp luật, hướng dẫn kỹ năng về phòng cháy, chữa cháy, cứu nạn, cứu hộ cho đổi tượng thuộc phạm vi quản lý.
+
+#### Điều 10. Xây dựng, thực tập các phương án chửa cháy, cứu nạn, cứu hộ
+
+1. Người đứng đầu cơ sở, chủ phương tiện giao thông quy định tại khoản 2 Điều 22 của Luật này có trách nhiệm tổ chức xây dựng, thực tập phương án chữa cháy, cứu nạn, cứu hộ sử dụng lực lượng, phương tiện tại chỗ của cơ sở, phương tiện giao thông trong phạm vi quản lý.
+
+2. Cơ quan Công an có trách nhiệm sau đây:
+
+a) Tố chức xây dựng, thực tập phương án chữa cháy, cứu nạn, cửu hộ đối với cơ sở có nguy hiểm về cháy, nổ;
+
+b) Tổ chức xây dựng, thực tập phương án cứu nạn, cứu hộ đối với các tình huống tai nạn, sự cố quy định tại điểm b khoản 1 Điều 32 của Luật này cần huy động lực lượng, phương tiện cua nhiều cơ quan, tổ chưc, ca nhản.
+
+3. Người đứng đầu cơ sở có nguy hiểm về cháy, nổ có trách nhiệm phối hợp với cơ quan Công an trong xây dựng, thực tập phương án chữa cháy, cứu nạn, cứu hộ quy định tại điểm a khoản 2 Điều này; Chủ tịch ủ y ban nhân dân cấp xã có trách nhiệm phối họp với cơ quan Công an xây dựng, thực tập phương án cứu nạn, cứu hộ quy định tại điếm b khoản 2 Điều này.
+
+4. Cơ quan, tổ chức, cá nhân có trong phương án chữa cháy, cứu nạn, cứu hộ hoặc phương án cứu nạn, cứu hộ do cơ quan Công an xây dựng có trách nhiệm bố trí lực lưọng, người, phương tiện tham gia thực tập phương án.
+
+5. Cơ quan Quân sự, Biên phòng có trách nhiệm chủ trì, phổi hợp cơ quan

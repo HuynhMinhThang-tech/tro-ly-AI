@@ -2,110 +2,48 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
-const { toMarkdown, textToMarkdown, promoteLegalHeadings } = require('../lib/markdown');
+const { readTextFile } = require('../lib/markdown');
 const { chunkMarkdown } = require('../lib/chunker');
 const { analyze } = require('../lib/ingest');
 
 const fx = n => fs.readFileSync(path.join(__dirname, 'fixtures', n));
-const heads = md => md.split('\n').filter(l => /^#{1,6} /.test(l));
-const dieuNums = md => heads(md).map(h => (h.match(/^#### Điều (\d+)\./) || [])[1]).filter(Boolean).map(Number);
+const luatMd = () => fx('luat-mau.md').toString('utf8');
 
-test('TXT luật → Markdown: có tên luật, Chương, và các Điều theo đúng thứ tự', async () => {
-  const r = await toMarkdown(fx('luat-mau.txt'), 'luat-mau.txt');
-  assert.equal(r.type, 'text');
-  assert.match(heads(r.markdown)[0], /^# LUẬT PHÒNG CHÁY/);
-  assert.ok(heads(r.markdown).some(h => /^## Chương I – QUY ĐỊNH CHUNG$/.test(h)));
-  const nums = dieuNums(r.markdown);
-  assert.deepEqual(nums, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-});
-
-test('Chịu được các lỗi OCR thường gặp ở tiêu đề: "Điều 2 1 .", "Điêu 50.", "ChưongI", "Chuong V in"', () => {
-  const md = textToMarkdown([
-    'ChưongI', 'QUY ĐỊNH CHUNG', 'Điều 2 1 . Phòng cháy đối vói nhà ở', '1. Nội dung khoản một.',
-    'Điêu 50. Ngân sách nhà nưóc bảo đảm', 'cho hoạt động phòng cháy', '1. Nội dung khoản một của điều năm mươi.',
-    'Chuong V in', 'ĐIÈƯ KHOẢN THI HÀNH', 'Điều 53. Sửa đổi', '1. Nội dung khoản.'
-  ].join('\n'));
-  const h = md.split('\n').filter(l => l.startsWith('#'));
-  assert.deepEqual(h, ['## Chương I – QUY ĐỊNH CHUNG', '#### Điều 21. Phòng cháy đối vói nhà ở',
-    '#### Điều 50. Ngân sách nhà nưóc bảo đảm cho hoạt động phòng cháy', '## Chương V – ĐIÈƯ KHOẢN THI HÀNH', '#### Điều 53. Sửa đổi']);
-});
-
-test('TXT luật → Markdown: nối dòng ngắt cứng, bỏ số trang, tách riêng Khoản', async () => {
-  const md = (await toMarkdown(fx('luat-mau.txt'), 'x.txt')).markdown;
-  assert.ok(!/^\s*\d{1,3}\s*$/m.test(md), 'không còn dòng chỉ có số trang');
-  assert.ok(!/E-pas/i.test(md));
-  assert.match(md, /^1\. Cháy là phản ứng hóa học[^\n]+trật tự\.$/m, 'Khoản 1 Điều 2 gói trong đúng một dòng');
-  assert.match(md, /^Luật số: 55\/2024\/QH15$/m, 'dòng ngắn ở phần mở đầu không bị dính vào dòng khác');
-  assert.match(md, /Cơ sở thuộc diện quản lý[^\n]+hoạt động thương mại, làm việc/, 'câu bị ngắt do sang trang được nối lại');
-  assert.match(md, /#### Điều 4\. Chính sách của Nhà nước về phòng cháy, chữa cháy, cứu nạn, cứu hộ\n/, 'tiêu đề Điều bị ngắt dòng được nối');
-});
-
-test('Tiêu đề Điều dài 3 dòng được nối đủ, không để rơi vào nội dung', () => {
-  const md = textToMarkdown([
-    'Điều 16. Yêu cầu về phòng cháy, chữa cháy khi lập, điều chỉnh dự án', 'đầu tư xây dựng công trình, thiết kế công trình, cải tạo, thay đổi công năng sử',
-    'dụng công trình, sản xuất, lắp ráp, đóng mới, hoán cải phương tiện giao thông', '1. Khi lập dự án phải có giải pháp phòng cháy và chữa cháy phù hợp.'
-  ].join('\n'));
-  assert.match(md, /^#### Điều 16\. .+năng sử dụng công trình, sản xuất, lắp ráp, đóng mới, hoán cải phương tiện giao thông$/m);
-  assert.match(md, /\n\n1\. Khi lập dự án/);
-});
-
-test('PDF thật cho cùng cấu trúc với TXT', async () => {
-  const r = await toMarkdown(fx('luat-mau.pdf'), 'luat-mau.pdf');
-  assert.equal(r.type, 'pdf'); assert.equal(r.pages, 6);
-  const nums = dieuNums(r.markdown);
-  assert.deepEqual(nums.slice(0, 10), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-});
-
-test('DOCX có style Heading → giữ tiêu đề, danh sách, bảng', async () => {
-  const r = await toMarkdown(fx('quy-che-heading.docx'), 'a.docx');
-  assert.equal(r.type, 'docx');
-  assert.match(r.markdown, /^# QUY CHẾ PHÒNG CHÁY CHỮA CHÁY NỘI BỘ$/m);
-  assert.match(r.markdown, /^## Chương I – QUY ĐỊNH CHUNG$/m);
-  assert.match(r.markdown, /^#### Điều 2\. Trách nhiệm$/m);
-  assert.match(r.markdown, /^- +Ban hành nội quy phòng cháy;$/m);
-  assert.match(r.markdown, /^\| Thiết bị \| Số lượng \| Chu kỳ kiểm tra \|\n\| --- \| --- \| --- \|\n\| Bình chữa cháy \| 24 \| 6 tháng \|/m);
-});
-
-test('DOCX KHÔNG có style Heading (chỉ gõ "Điều 1." / in đậm) vẫn ra đúng cấp tiêu đề', async () => {
-  const md = (await toMarkdown(fx('quy-che-khong-heading.docx'), 'b.docx')).markdown;
-  assert.match(md, /^## Chương I – QUY ĐỊNH CHUNG$/m, 'CHƯƠNG I + dòng in hoa kế tiếp gộp thành một tiêu đề');
-  assert.match(md, /^#### Điều 1\. Phạm vi điều chỉnh$/m, 'tiêu đề in đậm → bỏ ** và lên cấp tiêu đề');
-  assert.match(md, /^#### Điều 3\. Điều khoản thi hành$/m, 'tiêu đề không in đậm cũng nhận ra');
-  assert.match(md, /^# QUY CHẾ AN TOÀN PHÒNG CHÁY CHỮA CHÁY TẠI KHO HÀNG$/m, 'tên văn bản "QUY CHẾ" + dòng in hoa kế tiếp thành tiêu đề cấp 1');
-  assert.ok(!md.includes('**'));
-  assert.match(md, /^1\. Hàng hóa dễ cháy/m, 'không bị escape "1\\."');
-});
-
-test('HTML → Markdown: bỏ script/style/ảnh, giữ bảng và tiêu đề', async () => {
-  const html = '<!doctype html><html><head><title>t</title><style>p{}</style></head><body><script>alert(1)</script>' +
-    '<h2>Điều 5. Nguyên tắc</h2><p>Nội dung <b>quan trọng</b>.</p><img src="data:image/png;base64,AAAA">' +
-    '<table><tr><td>A</td><td>B</td></tr><tr><td>1</td><td>2 | 3</td></tr></table></body></html>';
-  const r = await toMarkdown(Buffer.from(html), 'f.html');
-  assert.equal(r.type, 'html');
-  assert.match(r.markdown, /^#### Điều 5\. Nguyên tắc$/m);
-  assert.ok(!/alert|base64|p\{\}/.test(r.markdown));
-  assert.match(r.markdown, /\| 1 \| 2 \\\| 3 \|/);
-});
-
-test('Markdown có sẵn: giữ nguyên, chuẩn hóa Chương/Điều', async () => {
+// ---------------- Đọc tệp: chỉ .md / .txt, không chuyển đổi ----------------
+test('Markdown: giữ nguyên nội dung, không chỉnh gì', () => {
   const src = '# Tên\n\n**Điều 1. Mục đích**\n\nNội dung.\n\n## Phần khác\n\nChữ.\n';
-  const r = await toMarkdown(Buffer.from(src), 'a.md');
-  assert.equal(r.type, 'markdown');
-  assert.match(r.markdown, /^#### Điều 1\. Mục đích$/m);
-  assert.match(r.markdown, /^## Phần khác$/m);
+  const r = readTextFile(Buffer.from(src), 'a.md');
+  assert.equal(r.type, 'markdown'); assert.equal(r.markdown, src); assert.equal(r.text, src);
 });
 
-test('Tệp không hỗ trợ trả về lỗi dễ hiểu', async () => {
-  assert.match((await toMarkdown(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 0, 0, 0, 0]), 'a.doc')).error, /\.doc/);
-  assert.match((await toMarkdown(Buffer.from('{\\rtf1 abc'), 'a.rtf')).error, /RTF/);
-  assert.match((await toMarkdown(Buffer.from([1, 2, 0, 3, 4]), 'a.bin')).error, /không phải văn bản/);
-  assert.match((await toMarkdown(Buffer.from('%PDF-1.4 hỏng'), 'a.pdf')).error, /PDF/);
-  assert.match((await toMarkdown(Buffer.from('PK\x03\x04 không phải docx'), 'a.docx')).error, /DOCX/);
+test('TXT: giữ nguyên nội dung, không tự thêm tiêu đề #', () => {
+  const src = 'LUẬT\nChương I\nĐiều 1. Phạm vi\nNội dung.\n';
+  const r = readTextFile(Buffer.from(src), 'a.txt');
+  assert.equal(r.type, 'text'); assert.equal(r.markdown, src); assert.ok(!/^#/m.test(r.markdown));
+});
+
+test('Chỉ chuẩn hóa BOM và xuống dòng Windows (CRLF)', () => {
+  const r = readTextFile(Buffer.from('\uFEFFdòng một\r\ndòng hai\r\n'), 'a.TXT');
+  assert.equal(r.markdown, 'dòng một\ndòng hai\n');
+});
+
+test('Tệp khác .md/.txt bị từ chối, thông báo yêu cầu chuyển về Markdown hoặc txt', () => {
+  for (const name of ['a.pdf', 'a.docx', 'a.doc', 'a.html', 'a.rtf', 'a.xlsx', 'khong-duoi']) {
+    const r = readTextFile(Buffer.from('nội dung'), name);
+    assert.ok(r.error, name); assert.match(r.error, /Markdown \(\.md\) hoặc văn bản \(\.txt\)/, name);
+  }
+  assert.match(readTextFile(Buffer.from('x'), 'a.pdf').error, /\.pdf/);
+});
+
+test('Đuôi .txt/.md nhưng nội dung nhị phân hoặc UTF-16 → báo lỗi dễ hiểu', () => {
+  const r = readTextFile(Buffer.from([0xff, 0xfe, 0x41, 0, 0x42, 0]), 'a.txt');
+  assert.match(r.error, /UTF-8/);
+  assert.match(readTextFile(Buffer.from([1, 2, 0, 3]), 'a.md').error, /UTF-8/);
 });
 
 // ---------------- Chunker ----------------
 test('Chunker: mỗi Điều một đoạn, nhãn có đường dẫn Chương › Điều, không đoạn nào quá dài', async () => {
-  const md = (await toMarkdown(fx('luat-mau.txt'), 'x.txt')).markdown;
+  const md = luatMd();
   const chunks = chunkMarkdown(md);
   assert.ok(chunks.length >= 14);
   for (const c of chunks) {
@@ -151,33 +89,35 @@ test('Chunker: văn bản không có tiêu đề vẫn tách được; mục cha
 });
 
 // ---------------- analyze() ----------------
-test('analyze(): TXT luật hợp lệ, hash tính trên chữ gốc (tương thích tài liệu đã lập chỉ mục)', async () => {
-  const buf = fx('luat-mau.txt');
-  const a = await analyze(buf, 'luat-mau.txt');
+test('analyze(): MD luật hợp lệ, hash tính trên chữ gốc (tương thích tài liệu đã lập chỉ mục)', async () => {
+  const buf = fx('luat-mau.md');
+  const a = await analyze(buf, 'luat-mau.md');
   assert.ok(a.chunks.length > 10);
   assert.ok(a.markdown.startsWith('# LUẬT'));
   assert.deepEqual(a.issues.filter(i => i.level === 'block'), []);
   assert.equal(a.hash, crypto.createHash('sha256').update(buf.toString('utf8').replace(/\s+/g, ' ').trim()).digest('hex'));
 });
 
+test('analyze(): TXT không có tiêu đề # vẫn nhận, tách theo độ dài và báo cho admin', async () => {
+  const a = await analyze(fx('luat-mau.txt'), 'luat-mau.txt');
+  assert.deepEqual(a.issues.filter(i => i.level === 'block'), []);
+  assert.ok(a.chunks.length >= 1);
+  assert.ok(a.issues.some(i => i.level === 'info' && /không thấy tiêu đề/i.test(i.text)));
+});
+
 test('analyze(): vẫn cảnh báo lỗi OCR (chữ bị tách rời) như trước', async () => {
-  const ocr = 'Điều 1. Phạm vi\n' + 'Hoạt động c ứ u nạn, c ứ u hộ và c ứ u trợ. '.repeat(8) + '\nĐiều 2. Khác\n' + 'Nội dung điều hai khá dài để đủ ngưỡng. '.repeat(5);
-  const a = await analyze(Buffer.from(ocr), 'ocr.txt');
+  const ocr = '#### Điều 1. Phạm vi\n' + 'Hoạt động c ứ u nạn, c ứ u hộ và c ứ u trợ. '.repeat(8) + '\n#### Điều 2. Khác\n' + 'Nội dung điều hai khá dài để đủ ngưỡng. '.repeat(5);
+  const a = await analyze(Buffer.from(ocr), 'ocr.md');
   assert.ok(a.issues.some(i => i.level === 'warn' && /chữ bị tách rời/.test(i.text)));
   assert.ok(a.chunks.some(c => /Điều 2\./.test(c.heading)));
 });
 
-test('analyze(): tệp quá ngắn / định dạng không hỗ trợ bị chặn', async () => {
+test('analyze(): tệp quá ngắn bị chặn; PDF/Word bị chặn kèm hướng dẫn chuyển về .md/.txt', async () => {
   const empty = await analyze(Buffer.from('ngắn quá'), 'a.txt');
   assert.ok(empty.issues.some(i => i.level === 'block' && /trống hoặc quá ngắn/.test(i.text)));
-  const bad = await analyze(Buffer.from([0xd0, 0xcf, 0x11, 0xe0, 1, 2, 3, 4]), 'a.doc');
-  assert.ok(bad.issues.some(i => i.level === 'block'));
-});
-
-test('analyze(): DOCX có ảnh → chỉ lấy chữ, không nhúng base64, có ghi chú cho admin', async () => {
-  const a = await analyze(fx('co-anh.docx'), 'co-anh.docx');
-  assert.ok(!/base64|data:image/.test(a.markdown));
-  assert.ok(a.issues.some(i => i.level === 'info' && /1 hình ảnh/.test(i.text)));
-  assert.match(a.markdown, /^# Hướng dẫn thoát hiểm$/m);
-  assert.deepEqual(a.issues.filter(i => i.level === 'block'), []);
+  for (const name of ['a.pdf', 'a.docx', 'a.doc', 'a.html']) {
+    const bad = await analyze(Buffer.from('%PDF-1.4 hoặc PK nội dung bất kỳ'), name);
+    assert.ok(bad.issues.some(i => i.level === 'block' && /\.md\) hoặc văn bản \(\.txt/.test(i.text)), name);
+    assert.equal(bad.chunks.length, 0);
+  }
 });

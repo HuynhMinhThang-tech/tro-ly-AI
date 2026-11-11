@@ -265,8 +265,8 @@ body[data-auth="in"] .auth{display:none}
           <div class="stat"><b id="sPend">0</b><span>Người dùng chờ duyệt</span></div>
         </div>
         <div class="drop">
-          <p><b>Tải văn bản lên</b><br><small>PDF, Word (.docx), HTML, TXT hoặc Markdown. Hệ thống chuyển sang Markdown và quét trước, bạn xem kết quả rồi mới xác nhận lập chỉ mục.</small></p>
-          <input id="dFile" type="file" accept=".pdf,.docx,.html,.htm,.txt,.md" hidden>
+          <p><b>Tải văn bản lên</b><br><small>Chỉ nhận tệp Markdown (.md) hoặc văn bản (.txt), hệ thống không chuyển đổi định dạng. Tệp PDF, Word... hãy chuyển sang .md hoặc .txt trước. Hệ thống quét trước, bạn xem kết quả rồi mới xác nhận lập chỉ mục.</small></p>
+          <input id="dFile" type="file" accept=".md,.markdown,.txt" hidden>
           <button class="btn primary" id="dPick">Chọn tệp để quét</button>
         </div>
         <div id="scanBox" hidden></div>
@@ -561,7 +561,7 @@ function renderScan(rep){
   var box=$("scanBox"),lv=rep.level,f=rep.file||{},st=rep.stats;scanId=rep.scan_id||null;
   var tag=lv==="ok"?'<span class="tag t-ok">Hợp lệ</span>':lv==="warn"?'<span class="tag t-warn">Có cảnh báo</span>':'<span class="tag t-bad">Không thể tải lên</span>';
   var info=[fmtMB(f.size_mb||0)];
-  if(f.type)info.push({pdf:"PDF",docx:"Word",html:"HTML",markdown:"Markdown"}[f.type]||"Văn bản");
+  if(f.type)info.push({markdown:"Markdown",text:"Văn bản"}[f.type]||"Văn bản");
   if(f.pages)info.push(f.pages+" trang");
   if(st)info.push(st.chunks+" đoạn","~"+st.est_tokens.toLocaleString("vi-VN")+" token","lập chỉ mục nền ~"+st.est_minutes+" phút","~"+st.est_mb+" MB trong database (đang dùng "+st.db_used_mb+" / "+st.db_limit_mb+" MB)");
   var items=(rep.issues||[]).map(function(i){return '<li class="i-'+i.level+'">'+esc(i.text)+'</li>'}).join("");
@@ -570,7 +570,7 @@ function renderScan(rep){
   box.innerHTML='<div>'+tag+' <b>'+esc(f.name||"")+'</b></div><div class="scan-s">'+esc(info.join(" · "))+'</div>'+
     (items?'<ul>'+items+'</ul>':'<div class="scan-s">Không phát hiện vấn đề nào.</div>')+
     (rep.preview&&rep.preview.length?'<div class="scan-p">Cấu trúc đọc được: '+esc(rep.preview.join(" | "))+'…</div>':"")+
-    (rep.markdown_preview?'<details class="scan-md"><summary>Xem bản Markdown đã chuyển đổi ('+rep.markdown_chars.toLocaleString("vi-VN")+' ký tự)</summary><pre>'+esc(rep.markdown_preview)+(rep.markdown_chars>rep.markdown_preview.length?'\n…':'')+'</pre></details>':"")+
+    (rep.markdown_preview?'<details class="scan-md"><summary>Xem trước nội dung ('+rep.markdown_chars.toLocaleString("vi-VN")+' ký tự)</summary><pre>'+esc(rep.markdown_preview)+(rep.markdown_chars>rep.markdown_preview.length?'\n…':'')+'</pre></details>':"")+
     '<div class="acts"><button class="btn" data-sc="cancel">Hủy</button>'+btn+'</div>';
   box.hidden=false;
 }
@@ -579,6 +579,10 @@ $("dPick").onclick=function(){$("dFile").click()};
 $("dFile").onchange=async function(){
   var f=this.files[0];this.value="";if(!f)return;
   pending=null;$("scanBox").hidden=true;
+  if(!/\.(md|markdown|txt)$/i.test(f.name)){
+    renderScan({level:"block",file:{name:f.name,size_mb:f.size/1048576},issues:[{level:"block",text:"Hệ thống chỉ nhận tệp Markdown (.md) hoặc văn bản (.txt). Hãy chuyển tệp sang một trong hai định dạng này rồi tải lên lại."}]});
+    return;
+  }
   var maxMB=limits.max_file_mb||20;
   if(f.size>maxMB*1048576){
     renderScan({level:"block",file:{name:f.name,size_mb:f.size/1048576},issues:[{level:"block",text:"Tệp nặng "+(f.size/1048576).toFixed(1)+" MB, vượt giới hạn "+maxMB+" MB. Hãy tách nhỏ hoặc nén tệp rồi thử lại."}]});

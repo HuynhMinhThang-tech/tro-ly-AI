@@ -174,7 +174,7 @@ app.put('/api/admin/ai', auth, admin, async (q, r) => {
 });
 
 // ---- Tài liệu: quét trước, xác nhận rồi mới lập chỉ mục ----
-// Kết quả quét (đã chuyển Markdown + tách đoạn) được giữ ở máy chủ 20 phút để bước xác nhận không phải tải tệp lên lần nữa.
+// Kết quả quét (đã đọc tệp .md/.txt + tách đoạn) được giữ ở máy chủ 20 phút để bước xác nhận không phải tải tệp lên lần nữa.
 const SCANS = new Map(), SCAN_TTL = 20 * 60 * 1000;
 function rememberScan(user, prep) {
   const now = Date.now();

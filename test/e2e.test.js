@@ -124,7 +124,7 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
   let lawId;
   await t.test('tải lên trả lời ngay (202), embedding chạy nền, không bao giờ chạm 429, tiến độ tăng dần', async () => {
     mock.n429 = 0;
-    const r = await upload(root, 'luat-mau.txt', { title: 'Luật mẫu', doc_number: '55/2024/QH15' });
+    const r = await upload(root, 'luat-mau.md', { title: 'Luật mẫu', doc_number: '55/2024/QH15' });
     assert.equal(r.status, 202, JSON.stringify(r.data)); lawId = r.data.id;
     assert.ok(r.ms < 2000, 'phản hồi phải tức thì, không chờ embedding (mất ' + r.ms + 'ms)');
     assert.equal(r.data.status, 'processing');
@@ -161,15 +161,15 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
   await t.test('xác nhận không cần tải lại tệp: scan_id sai/hết hạn → 410, tải trực tiếp vẫn dùng được', async () => {
     const bad = await call('/api/admin/docs', { method: 'POST', token: root, json: { scan_id: 'khong-co' } });
     assert.equal(bad.status, 410); assert.equal(bad.data.expired, true);
-    const scan = await call('/api/admin/docs/scan', { method: 'POST', token: root, form: fileForm('quy-che-heading.docx') });
+    const scan = await call('/api/admin/docs/scan', { method: 'POST', token: root, form: fileForm('quy-che-heading.md') });
     assert.equal((await call('/api/admin/docs', { method: 'POST', token: u2t, json: { scan_id: scan.data.scan_id } })).status, 403);
-    const direct = await call('/api/admin/docs', { method: 'POST', token: root, form: fileForm('quy-che-khong-heading.docx', { force: 'true' }) });
+    const direct = await call('/api/admin/docs', { method: 'POST', token: root, form: fileForm('quy-che-khong-heading.md', { force: 'true' }) });
     assert.equal(direct.status, 202);
     await waitStatus(root, direct.data.id, 'ready');
   });
 
   await t.test('server khởi động lại giữa chừng → tự chạy tiếp đúng chỗ dở, không trùng, không thiếu đoạn', async () => {
-    const r = await upload(root, 'luat-mau.pdf', { title: 'PDF mẫu' });
+    const r = await upload(root, 'luat-mau.md', { title: 'MD mẫu' });
     const id = r.data.id;
     let before; for (let i = 0; i < 100; i++) { before = (await call('/api/admin/docs', { token: root })).data.find(d => d.id === id); if (before.embedded > 0 && before.embedded < before.chunk_count) break; await sleep(100); }
     assert.ok(before.embedded > 0 && before.embedded < before.chunk_count, 'phải bắt được lúc đang dở');
@@ -182,7 +182,7 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
 
   await t.test('Voyage lỗi → tài liệu báo lỗi (không mất đoạn nào) → bấm Thử lại thì chạy tiếp', async () => {
     mock.mode = 'down';
-    const r = await upload(root, 'co-anh.docx', { title: 'Có ảnh' });
+    const r = await upload(root, 'co-anh.md', { title: 'Có ảnh' });
     const { d } = await waitStatus(root, r.data.id, 'error', 30000);
     assert.match(d.error, /500/); assert.equal(d.embedded, 0);
     assert.equal((await call(`/api/admin/docs/${r.data.id}/retry`, { method: 'POST', token: root })).status, 200);

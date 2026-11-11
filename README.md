@@ -4,8 +4,8 @@ Node.js (Express) · **Neon** (Postgres + pgvector) · **Voyage AI** (embedding)
 Tên, giọng điệu của trợ lý do quản trị viên đặt trong giao diện, không gắn tên riêng.
 
 ## Cách hoạt động
-1. Admin chọn tệp **PDF / Word (.docx) / HTML / TXT / Markdown** → hệ thống **chuyển sang Markdown** rồi **quét trước** (chưa lưu gì). Tệp chỉ tải lên **một lần**: kết quả quét được giữ ở máy chủ 20 phút, bước xác nhận chỉ gửi mã quét. Admin xem báo cáo và bản Markdown xem trước rồi xác nhận.
-2. Markdown được tách đoạn theo cây tiêu đề (**Chương › Mục › Điều**) và ghi vào Neon **ngay lập tức** (trả lời trong chưa đầy 1 giây).
+1. Admin chọn tệp **Markdown (.md) hoặc văn bản (.txt)** → hệ thống **đọc nguyên văn, không chuyển đổi gì** rồi **quét trước** (chưa lưu gì). Tệp định dạng khác (PDF, Word, HTML...) bị từ chối kèm thông báo yêu cầu chuyển sang `.md` hoặc `.txt`. Tệp chỉ tải lên **một lần**: kết quả quét được giữ ở máy chủ 20 phút, bước xác nhận chỉ gửi mã quét. Admin xem báo cáo và nội dung xem trước rồi xác nhận.
+2. Nội dung được tách đoạn theo cây tiêu đề Markdown (**Chương › Mục › Điều**) và ghi vào Neon **ngay lập tức** (trả lời trong chưa đầy 1 giây).
 3. Embedding (Voyage) chạy **nền**, từng lô nhỏ đúng hạn mức, có thanh tiến độ trong bảng tài liệu. Tài liệu chỉ vào kết quả tìm kiếm khi đã lập chỉ mục xong. Server khởi động lại giữa chừng thì tự chạy tiếp; lỗi thì bấm **Thử lại**, không mất đoạn nào.
 3. Người dùng hỏi → tìm 6 đoạn liên quan nhất (chỉ trong văn bản còn hiệu lực) → model Groq trả lời, ghi nhãn [số] và hiện nguồn.
 4. Đăng ký → **chờ duyệt** → admin duyệt mới đăng nhập được. Mật khẩu băm bcrypt, phiên là token ngẫu nhiên lưu bản băm trong database.
@@ -13,23 +13,13 @@ Tên, giọng điệu của trợ lý do quản trị viên đặt trong giao di
 ## Pipeline lập chỉ mục
 
 ```
-tệp tải lên ─▶ lib/markdown.js ─▶ lib/chunker.js ─▶ ghi Neon ─▶ lib/indexer.js (NỀN) ─▶ embedding Voyage
-               toMarkdown()        chunkMarkdown()   documents + chunks   từng lô nhỏ, giữ nhịp 3 RPM/10K TPM
+tệp .md/.txt ─▶ lib/markdown.js ─▶ lib/chunker.js ─▶ ghi Neon ─▶ lib/indexer.js (NỀN) ─▶ embedding Voyage
+                 readTextFile()     chunkMarkdown()   documents + chunks   từng lô nhỏ, giữ nhịp 3 RPM/10K TPM
 ```
 
-| Loại tệp | Cách chuyển sang Markdown |
-|---|---|
-| PDF (có lớp chữ) | `pdf-parse` lấy chữ → nối dòng bị ngắt cứng, bỏ số trang → nhận diện **Chương / Mục / Điều** (chịu lỗi OCR như `Điều 2 1 .`, `ChưongI`) |
-| Word `.docx` | `mammoth` (giữ Heading, danh sách, bảng) → `turndown`. Nếu người soạn không dùng style Heading mà gõ tay "Điều 1." (kể cả in đậm), vẫn được nâng lên đúng cấp tiêu đề. Chỉ lấy chữ, ảnh bị bỏ (có ghi chú cho admin) |
-| HTML | `turndown` (bỏ script/style/ảnh) |
-| Markdown | giữ nguyên, chuẩn hóa tiêu đề Chương/Mục/Điều |
-| TXT | như PDF |
+Hệ thống **không chuyển đổi** định dạng. Chỉ nhận `.md`, `.markdown`, `.txt` (UTF-8); BOM và xuống dòng Windows (CRLF) được chuẩn hóa, nội dung còn lại giữ nguyên. Muốn dùng PDF/Word, hãy chuyển sang Markdown hoặc txt bằng công cụ bên ngoài trước khi tải lên.
 
-Cấp tiêu đề cố định: `#` tên văn bản · `##` Chương · `###` Mục · `####` Điều. Tệp Word có Heading riêng thì giữ cấp của tác giả.
-
-**Tách đoạn** (`chunkMarkdown`): mỗi Điều/mục là một đơn vị riêng, không bao giờ gộp hai Điều vào một đoạn. Nhãn trích dẫn là đường dẫn đầy đủ, ví dụ `Chương I – QUY ĐỊNH CHUNG › Điều 12. Ngày toàn dân…`. Mục dài (mặc định > 1800 ký tự, đổi bằng `CHUNK_MAX_CHARS`) được tách ở ranh giới Khoản/điểm và đánh dấu `(phần 1/3)`; bảng được giữ nguyên, bảng quá dài tách theo hàng và lặp lại hàng tiêu đề; chỉ khi một đoạn văn đơn lẻ vẫn quá dài mới tách theo câu (có gối đầu), cuối cùng mới cắt cứng.
-
-Muốn **thay bộ chuyển đổi** (ví dụ thêm OCR cho PDF scan bằng Docling/Marker/dịch vụ OCR): chỉ sửa `pdfToMarkdown()` trong `lib/markdown.js` để trả về `{ text, markdown }`, các bước sau không đổi.
+**Tách đoạn** (`chunkMarkdown`) dựa vào các dòng tiêu đề Markdown (`#`, `##`, `###`, `####`). Với tệp `.md` đã có tiêu đề (ví dụ `## Chương I`, `#### Điều 1.`), mỗi Điều/mục là một đơn vị riêng, không bao giờ gộp hai Điều vào một đoạn, và nhãn trích dẫn là đường dẫn đầy đủ như `Chương I – QUY ĐỊNH CHUNG › Điều 12. Ngày toàn dân…`. Tệp `.txt` không có dòng tiêu đề `#` sẽ được cắt theo độ dài đoạn và trích dẫn không có tên mục. Mục dài (mặc định > 1800 ký tự, đổi bằng `CHUNK_MAX_CHARS`) được tách ở ranh giới Khoản/điểm và đánh dấu `(phần 1/3)`; bảng được giữ nguyên, bảng quá dài tách theo hàng và lặp lại hàng tiêu đề; chỉ khi một đoạn văn đơn lẻ vẫn quá dài mới tách theo câu (có gối đầu), cuối cùng mới cắt cứng.
 
 ## Lập chỉ mục nền và hạn mức Voyage
 Gói Voyage **chưa thanh toán** chỉ cho **3 yêu cầu/phút và 10.000 token/phút**. Một bộ luật dài (~75 đoạn, ~45.000 token) vẫn lập chỉ mục được, chỉ mất khoảng **5 phút chạy nền** (admin không phải chờ). Hệ thống chia lô theo token, chờ đủ chỗ trong hạn mức trước khi gửi và luôn chừa lại 1 yêu cầu/phút cho câu hỏi của người dùng nên chatbot vẫn trả lời bình thường trong lúc lập chỉ mục. Báo cáo quét hiển thị thời gian ước tính.
