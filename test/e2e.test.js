@@ -15,7 +15,7 @@ const WINDOW = 1500;                                         // cửa sổ giớ
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ---- Voyage giả: ÁP đúng hạn mức 3 RPM / 10K TPM, vượt là trả 429 thật ----
-const mock = { reqs: [], n429: 0, mode: 'ok', groqCtx: '' };
+const mock = { reqs: [], n429: 0, accepted: 0, mode: 'ok', groqCtx: '' };
 let mockServer;
 function startMock() {
   mockServer = http.createServer((req, res) => {
@@ -32,7 +32,7 @@ function startMock() {
       if (mock.reqs.length + 1 > 3 || mock.reqs.reduce((a, r) => a + r.tokens, 0) + tokens > 10000) {
         mock.n429++; res.writeHead(429, { 'retry-after': '1' }); return res.end('{"detail":"rate limit"}');
       }
-      mock.reqs.push({ t: now, tokens });
+      mock.reqs.push({ t: now, tokens }); mock.accepted++;
       res.end(JSON.stringify({ data: b.input.map(() => ({ embedding: Array.from({ length: 1024 }, (_, i) => (i % 7) / 7) })), usage: { total_tokens: tokens } }));
     });
   });
@@ -146,6 +146,16 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
     const q = await call('/api/chat', { method: 'POST', token: root, json: { message: 'Cháy là gì?' } });
     assert.equal(q.status, 200); assert.match(mock.groqCtx, /Điều 2\./);
     assert.match(q.data.sources.map(s => s.heading).join('|'), /Chương I – QUY ĐỊNH CHUNG › Điều/);
+  });
+
+  await t.test('chat: câu hỏi lặp lại (sau khi chuẩn hóa) không tốn thêm yêu cầu Voyage', async () => {
+    await sleep(WINDOW + 300);
+    const ask = m => call('/api/chat', { method: 'POST', token: root, json: { message: m } });
+    const before = mock.accepted;
+    assert.equal((await ask('Quyền tác giả là gì?')).status, 200);
+    assert.equal((await ask('  quyền   TÁC giả là gì? ')).status, 200);
+    assert.equal((await ask('Quyền tác giả là gì?')).status, 200);
+    assert.equal(mock.accepted - before, 1, 'ba lần hỏi cùng một câu chỉ được gọi Voyage một lần');
   });
 
   await t.test('xác nhận không cần tải lại tệp: scan_id sai/hết hạn → 410, tải trực tiếp vẫn dùng được', async () => {

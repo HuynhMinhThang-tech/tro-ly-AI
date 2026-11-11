@@ -349,6 +349,16 @@ app.get('/api/conversations/:id', auth, async (q, r) => {
   const { rows } = await pool.query('select role, content, sources from messages where conversation_id = $1 order by id', [c.id]);
   r.json(rows);
 });
+// Câu hỏi giống hệt (sau khi chuẩn hóa) dùng lại vector cũ, không tốn thêm yêu cầu Voyage
+const QCACHE = new Map();
+async function queryVec(text) {
+  const k = text.toLowerCase().replace(/\s+/g, ' ').trim();
+  if (QCACHE.has(k)) { const v = QCACHE.get(k); QCACHE.delete(k); QCACHE.set(k, v); return v; }
+  const [v] = await embed([text], 'query');
+  QCACHE.set(k, v);
+  if (QCACHE.size > 300) QCACHE.delete(QCACHE.keys().next().value);
+  return v;
+}
 app.post('/api/chat', auth, async (q, r) => {
   const text = String((q.body || {}).message || '').trim().slice(0, 4000);
   if (!text) return r.status(400).json({ error: 'Hãy nhập câu hỏi.' });
@@ -361,16 +371,22 @@ app.post('/api/chat', auth, async (q, r) => {
     if (rows.length) history = (await pool.query('select role, content from messages where conversation_id = $1 order by id desc limit 10', [cid])).rows.reverse();
     else cid = null;
   }
-  let hits = [];
+  let hits = [], qv;
+  try { qv = await queryVec(text); }
+  catch (e) {
+    console.error('Tạo embedding cho câu hỏi lỗi:', e.message);
+    if (e.busy) return r.set('Retry-After', String(e.retryAfter)).status(429).json({ error: e.message });
+    if (e.status === 401 || e.status === 403) return r.status(502).json({ error: 'API key Voyage chưa hợp lệ, vui lòng báo quản trị viên.' });
+    if (/VOYAGE_API_KEY/.test(e.message)) return r.status(503).json({ error: 'Quản trị viên chưa cấu hình VOYAGE_API_KEY.' });
+    return r.status(502).json({ error: 'Dịch vụ tạo embedding (Voyage) đang gặp sự cố, vui lòng thử lại sau.' });
+  }
   try {
-    const [qv] = await embed([text], 'query');
     hits = (await pool.query(
       'select c.heading, c.content, d.title, d.doc_number from chunks c join documents d on d.id = c.document_id where d.active and d.status = \'ready\' order by c.embedding <=> $1::vector limit 6',
       [JSON.stringify(qv)])).rows;
   } catch (e) {
-    console.error(e);
-    if (e.busy) return r.status(429).json({ error: e.message });
-    return r.status(502).json({ error: 'Dịch vụ tìm kiếm tài liệu đang gặp sự cố, vui lòng thử lại sau.' });
+    console.error('Truy vấn tài liệu lỗi:', e.message);
+    return r.status(502).json({ error: 'Không truy cập được cơ sở dữ liệu, vui lòng thử lại sau ít phút.' });
   }
 
   const ctx = hits.map((h, i) => `[${i + 1}] ${h.title}${h.doc_number ? ' (' + h.doc_number + ')' : ''} – ${h.heading}\n${h.content}`).join('\n\n');

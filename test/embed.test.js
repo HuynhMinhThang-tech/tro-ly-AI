@@ -66,7 +66,7 @@ test('embed(query): hết chỗ trong hạn mức và phải chờ quá lâu th�
   const { embed, resetLimiter } = ing(); resetLimiter();
   await embed(['câu hỏi một'], 'query');
   const t0 = Date.now();
-  await assert.rejects(embed(['câu hỏi hai'], 'query'), e => e.busy === true && /bận/.test(e.message));
+  await assert.rejects(embed(['câu hỏi hai'], 'query'), e => e.busy === true && /giới hạn tốc độ.*giây/.test(e.message) && e.retryAfter > 0);
   assert.ok(Date.now() - t0 < 1000);
 });
 

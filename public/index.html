@@ -4,6 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Trợ lý AI</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%231b4965'/%3E%3Ctext x='32' y='33' font-family='Arial,Helvetica,sans-serif' font-size='34' font-weight='700' fill='%23fff' text-anchor='middle' dominant-baseline='central'%3EAI%3C/text%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -75,11 +76,12 @@ aside h4{margin:14px 6px 4px;font-size:13px;color:var(--muted);font-weight:600}
 .cite{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:3px 9px;font-size:12.5px;color:var(--brand)}
 .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
 .composer{border-top:1px solid var(--line);background:var(--surface);padding:12px 16px}
-.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;max-width:760px;margin:0 auto}
+.chips{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding-bottom:12px;max-width:760px;margin:0 auto}
+.chips .chip{text-align:left;border-radius:12px;padding:10px 14px;line-height:1.4}
 .chip{flex:none;border:1px solid var(--line);background:var(--bg);border-radius:999px;padding:6px 13px;font-size:13.5px}
 .chip:hover{border-color:var(--brand)}
 .input{display:flex;gap:8px;align-items:flex-end;max-width:760px;margin:0 auto}
-.input textarea{flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:10px 14px;min-height:46px;max-height:140px}
+.input textarea{flex:1;resize:none;border:1px solid var(--line);background:var(--bg);border-radius:14px;padding:10px 14px;min-height:46px;max-height:220px;overflow-y:hidden}
 .send{flex:none;width:46px;height:46px;border-radius:14px;border:0;background:var(--brand);color:var(--brand-ink);display:grid;place-items:center}
 .foot{max-width:760px;margin:8px auto 0;font-size:12px;color:var(--muted);text-align:center}
 
@@ -264,8 +266,6 @@ body[data-auth="in"] .auth{display:none}
         </div>
         <div class="drop">
           <p><b>Tải văn bản lên</b><br><small>PDF, Word (.docx), HTML, TXT hoặc Markdown. Hệ thống chuyển sang Markdown và quét trước, bạn xem kết quả rồi mới xác nhận lập chỉ mục.</small></p>
-          <input id="dTitle" type="text" placeholder="Tên văn bản (không bắt buộc)">
-          <input id="dNum" type="text" placeholder="Số hiệu, ví dụ 55/2024/QH15">
           <input id="dFile" type="file" accept=".pdf,.docx,.html,.htm,.txt,.md" hidden>
           <button class="btn primary" id="dPick">Chọn tệp để quét</button>
         </div>
@@ -366,6 +366,7 @@ function setView(v){
   document.body.setAttribute("data-view",v);
   $("bUser").setAttribute("aria-pressed",v==="user");
   $("bAdmin").setAttribute("aria-pressed",v==="admin");
+  if(v==="user")fitQ();
 }
 $("bUser").onclick=function(){setView("user")};
 $("bAdmin").onclick=function(){setView("admin");loadDocs();loadUsers()};
@@ -431,6 +432,7 @@ function applySettings(s){
   $("brandName").textContent=s.bot_name;$("brandTag").textContent=s.tagline;if(s.welcome)welcome=s.welcome;
   document.title=s.bot_name;
   $("chips").innerHTML=(s.suggestions||[]).map(function(t){return '<button class="chip" data-s="'+esc(t)+'">'+esc(t)+'</button>'}).join("");
+  syncChips();
   if(s.system_prompt!==undefined){
     $("sName").value=s.bot_name;$("sTag").value=s.tagline;$("sWelcome").value=s.welcome||"";$("sPrompt").value=s.system_prompt;
     [1,2,3].forEach(function(i){$("sg"+i).value=(s.suggestions||[])[i-1]||""});
@@ -446,6 +448,19 @@ function shortHead(h){
   var m=leaf.match(/^\s*[ĐD]i\S*\s*\d[\d\s]{0,3}/);
   return m?m[0].replace(/\s+/g," ").trim():leaf.replace(/\s*\(phần \d+\/\d+\)$/,"").slice(0,40);
 }
+/* Ô nhập tự giãn theo nội dung, đến chiều cao tối đa thì mới hiện thanh cuộn */
+function fitQ(){
+  var q=$("q");if(!q.offsetParent)return;   /* đang ẩn (xem trang quản trị) */
+  var max=Math.min(220,Math.round(window.innerHeight*0.4));
+  q.style.height="auto";
+  var h=q.scrollHeight+(q.offsetHeight-q.clientHeight);   /* cộng viền */
+  q.style.height=Math.min(h,max)+"px";
+  q.style.overflowY=h>max?"auto":"hidden";
+}
+$("q").addEventListener("input",fitQ);
+window.addEventListener("resize",fitQ);
+/* Gợi ý chỉ hiện ở cuộc trò chuyện mới, mất hẳn từ khi người dùng gửi câu đầu tiên */
+function syncChips(){var c=$("chips");c.hidden=!(c.children.length&&!$("col").querySelector(".row.me"))}
 function addMsg(role,text,sources){
   var row=document.createElement("div"),me=role==="user";
   row.className="row"+(me?" me":"");
@@ -456,6 +471,7 @@ function addMsg(role,text,sources){
   row.innerHTML=(me?"":'<div class="seal" aria-hidden="true">AI</div>')+'<div class="msg">'+(me?"<p>"+esc(text)+"</p>":fmt(text))+cites+'</div>';
   $("col").appendChild(row);
   $("thread").scrollTop=$("thread").scrollHeight;
+  syncChips();
   return row;
 }
 function newChat(){
@@ -482,7 +498,7 @@ $("convList").addEventListener("click",async function(e){
 async function send(text){
   text=String(text||$("q").value).trim();
   if(!text||busy)return;
-  busy=true;$("q").value="";
+  busy=true;$("q").value="";fitQ();
   addMsg("user",text);
   var w=addMsg("bot","Đang tra cứu tài liệu…");
   try{
@@ -570,7 +586,7 @@ $("dFile").onchange=async function(){
   }
   var b=$("dPick");b.disabled=true;b.textContent="Đang quét…";
   try{
-    var fd=new FormData();fd.append("title",$("dTitle").value);fd.append("doc_number",$("dNum").value);fd.append("file",f);
+    var fd=new FormData();fd.append("file",f);
     var rep=await api("/api/admin/docs/scan","POST",fd);pending=f;renderScan(rep);
   }catch(x){toast(x.message)}
   b.disabled=false;b.textContent="Chọn tệp để quét";
@@ -578,13 +594,13 @@ $("dFile").onchange=async function(){
 async function commitDoc(btn,force){
   if(!pending&&!scanId)return;
   var body;   /* có scan_id thì chỉ gửi thông tin nhỏ, không tải lại tệp */
-  if(scanId)body={scan_id:scanId,title:$("dTitle").value,doc_number:$("dNum").value,force:!!force};
-  else{body=new FormData();body.append("title",$("dTitle").value);body.append("doc_number",$("dNum").value);body.append("force",force?"true":"false");body.append("file",pending)}
+  if(scanId)body={scan_id:scanId,force:!!force};
+  else{body=new FormData();body.append("force",force?"true":"false");body.append("file",pending)}
   btn.disabled=true;btn.textContent="Đang gửi…";
   try{
     var d=await api("/api/admin/docs","POST",body);
     toast("Đã nhận tài liệu. Đang lập chỉ mục nền (~"+(d.est_minutes||1)+" phút), bạn có thể làm việc khác.");
-    clearScan();$("dTitle").value="";$("dNum").value="";loadDocs()
+    clearScan();loadDocs()
   }catch(x){
     toast(x.message);
     if(/hết hạn/.test(x.message)){clearScan();return}

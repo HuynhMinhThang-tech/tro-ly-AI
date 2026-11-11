@@ -34,6 +34,8 @@ Muốn **thay bộ chuyển đổi** (ví dụ thêm OCR cho PDF scan bằng Doc
 ## Lập chỉ mục nền và hạn mức Voyage
 Gói Voyage **chưa thanh toán** chỉ cho **3 yêu cầu/phút và 10.000 token/phút**. Một bộ luật dài (~75 đoạn, ~45.000 token) vẫn lập chỉ mục được, chỉ mất khoảng **5 phút chạy nền** (admin không phải chờ). Hệ thống chia lô theo token, chờ đủ chỗ trong hạn mức trước khi gửi và luôn chừa lại 1 yêu cầu/phút cho câu hỏi của người dùng nên chatbot vẫn trả lời bình thường trong lúc lập chỉ mục. Báo cáo quét hiển thị thời gian ước tính.
 
+**Câu hỏi của người dùng cũng tốn 1 yêu cầu Voyage mỗi câu**, nên ở gói chưa thanh toán chatbot chỉ trả lời tối đa khoảng 3 câu hỏi *khác nhau* mỗi phút. Câu hỏi giống hệt câu đã hỏi (sau khi chuẩn hóa chữ hoa/khoảng trắng) dùng lại kết quả cũ, không tốn thêm yêu cầu. Vượt hạn mức thì chatbot báo rõ "thử lại sau khoảng N giây" thay vì lỗi chung. Nếu thấy lỗi khác, thông báo sẽ cho biết đó là lỗi Voyage, sai API key Voyage hay lỗi database, và nguyên nhân chi tiết nằm trong log máy chủ.
+
 Muốn nhanh hơn: thêm phương thức thanh toán ở Voyage rồi đặt `EMBED_RPM` và `EMBED_TPM` theo hạn mức ghi trên trang Voyage của bạn (xem `.env.example`). Hạn mức Voyage hiện hành do Voyage quy định và có thể thay đổi, hãy đối chiếu trên trang của họ.
 
 ## Quản lý quyền admin
@@ -82,7 +84,7 @@ Vào **Quản trị → Mô hình AI**: dán API key Groq → bấm **Kiểm tra
 - Bot là công cụ hỗ trợ tra cứu, không thay thế ý kiến pháp lý chính thức.
 
 ## Kiểm thử
-`npm test` chạy 23 bài kiểm tra không cần database hay API key (chuyển Markdown, tách đoạn, bộ giữ nhịp embedding), dùng tệp mẫu trong `test/fixtures/`.
+`npm test` chạy 24 bài kiểm tra không cần database hay API key (chuyển Markdown, tách đoạn, bộ giữ nhịp embedding), dùng tệp mẫu trong `test/fixtures/`.
 
 Bài kiểm thử end-to-end (`test/e2e.test.js`: phân quyền admin, lập chỉ mục nền với Voyage giả **thật sự trả 429 nếu vượt hạn mức**, khởi động lại giữa chừng, lỗi và thử lại) chỉ chạy khi có database thử:
 ```
