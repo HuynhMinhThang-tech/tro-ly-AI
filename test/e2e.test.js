@@ -57,9 +57,15 @@ async function call(p, { method = 'GET', token, json, form } = {}) {
   const text = await res.text(); let data; try { data = JSON.parse(text); } catch { data = text; }
   return { status: res.status, data };
 }
-const fileForm = (name, extra = {}) => {
+async function callBuf(p, { method = 'GET', token, json, form } = {}) {
+  const headers = token ? { Authorization: 'Bearer ' + token } : {};
+  if (json) headers['Content-Type'] = 'application/json';
+  const res = await fetch(BASE + p, { method, headers, body: form || (json ? JSON.stringify(json) : undefined) });
+  return { status: res.status, buf: Buffer.from(await res.arrayBuffer()), type: res.headers.get('content-type') || '', disp: res.headers.get('content-disposition') || '' };
+}
+const fileForm = (name, extra = {}, buf) => {
   const fd = new FormData(); for (const [k, v] of Object.entries(extra)) fd.append(k, v);
-  fd.append('file', new Blob([fs.readFileSync(path.join(FX, name))]), name); return fd;
+  fd.append('file', new Blob([buf || fs.readFileSync(path.join(FX, name))]), name); return fd;
 };
 const register = email => call('/api/register', { method: 'POST', json: { name: email.split('@')[0], email, password: 'matkhau-dai-123' } });
 const login = email => call('/api/login', { method: 'POST', json: { email, password: 'matkhau-dai-123' } });
@@ -73,15 +79,15 @@ async function waitStatus(token, id, want, ms = 60000) {
   }
   throw new Error('quá thời gian chờ trạng thái ' + want);
 }
-async function upload(token, name, extra = {}) {
-  const scan = await call('/api/admin/docs/scan', { method: 'POST', token, form: fileForm(name, extra) });
+async function upload(token, name, extra = {}, buf) {
+  const scan = await call('/api/admin/docs/scan', { method: 'POST', token, form: fileForm(name, extra, buf) });
   assert.ok(scan.data.scan_id, 'quét phải trả scan_id: ' + JSON.stringify(scan.data).slice(0, 200));
   const t0 = Date.now();
   const r = await call('/api/admin/docs', { method: 'POST', token, json: { scan_id: scan.data.scan_id, ...extra, force: true } });
   return { ...r, ms: Date.now() - t0, scan: scan.data };
 }
 
-test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240000 }, async t => {
+test('end-to-end: quyền admin + lập chỉ mục nền + tìm kiếm lai', { skip, timeout: 240000 }, async t => {
   const { Pool } = require(path.join(ROOT, 'node_modules/pg'));
   const pool = new Pool({ connectionString: DB });
   await pool.query(fs.readFileSync(path.join(ROOT, 'schema.sql'), 'utf8'));
@@ -133,7 +139,7 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
 
     const q = await call('/api/chat', { method: 'POST', token: root, json: { message: 'Phòng cháy là gì?' } });   // hỏi trong lúc đang lập chỉ mục
     assert.equal(q.status, 200, 'chatbot vẫn trả lời được khi lập chỉ mục nền: ' + JSON.stringify(q.data));
-    assert.ok(!/Điều 1\./.test(mock.groqCtx), 'tài liệu chưa xong không được xuất hiện trong kết quả tìm kiếm');
+    assert.match(mock.groqCtx, /Luật mẫu/, 'tìm kiếm lai: tài liệu đang lập chỉ mục vẫn tìm được ngay bằng từ khóa');
 
     const { d, seen } = await waitStatus(root, lawId, 'ready');
     assert.equal(mock.n429, 0, 'bộ giữ nhịp không được để Voyage trả 429');
@@ -146,6 +152,42 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
     const q = await call('/api/chat', { method: 'POST', token: root, json: { message: 'Cháy là gì?' } });
     assert.equal(q.status, 200); assert.match(mock.groqCtx, /Điều 2\./);
     assert.match(q.data.sources.map(s => s.heading).join('|'), /Chương I – QUY ĐỊNH CHUNG › Điều/);
+  });
+
+  await t.test('hỏi thẳng "Điều N" → tra theo tiêu đề, đoạn đúng đứng đầu; số 2 không khớp nhầm Điều 20-29', async () => {
+    const q = await call('/api/chat', { method: 'POST', token: root, json: { message: 'Cho tôi xem nội dung Điều 2 nhé' } });
+    assert.equal(q.status, 200); assert.equal(q.data.mode, 'hybrid');
+    const first = (mock.groqCtx.match(/\n\[1\] ([^\n]*)/) || [])[1] || '';   // nhãn của đoạn đứng đầu trong <tai_lieu>
+    assert.match(first, /› Điều 2\. Giải thích từ ngữ/, 'Điều 2 phải đứng đầu: ' + first);
+    assert.ok(!/Điều 2\d\./.test(first), 'không được khớp nhầm Điều 20-29');
+  });
+
+  await t.test('Voyage lỗi lúc hỏi → vẫn trả lời bằng tìm kiếm từ khóa, kèm lời nhắc', async () => {
+    mock.mode = 'down';
+    try {
+      const q = await call('/api/chat', { method: 'POST', token: root, json: { message: 'Giải thích từ ngữ cứu nạn là gì vậy' } });
+      assert.equal(q.status, 200, JSON.stringify(q.data)); assert.equal(q.data.mode, 'keyword');
+      assert.match(q.data.notice, /từ khóa/); assert.match(mock.groqCtx, /Điều 2\./);
+    } finally { mock.mode = 'ok'; }
+  });
+
+  await t.test('vn_fold trong Postgres cho kết quả y hệt hàm bỏ dấu trong JS (mọi chữ cái tiếng Việt, hoa/thường)', async () => {
+    const { FROM, fold } = require(path.join(ROOT, 'lib/vn'));
+    const sample = FROM + ' Điều 12. NGƯỜI ĐẠI DIỆN ' + [...FROM].map(c => c.normalize('NFD')).join('');
+    const sql = (await pool.query('select vn_fold($1) as f', [sample])).rows[0].f;
+    assert.equal(sql, fold(sample));
+  });
+
+  await t.test('tải lại nội dung đã có → dùng lại vector, dùng được ngay, không tốn lượt Voyage', async () => {
+    await sleep(WINDOW + 300);
+    const before = mock.accepted;
+    const r = await upload(root, 'luat-mau.md', { title: 'Bản sao để thử dùng lại vector' });
+    assert.equal(r.status, 202, JSON.stringify(r.data));
+    assert.equal(r.data.reused, r.data.chunk_count, 'mọi đoạn đều trùng nên phải dùng lại hết');
+    assert.ok(r.scan.stats.reused > 0 && r.scan.stats.est_tokens === 0, 'báo cáo quét phải cho biết số đoạn dùng lại: ' + JSON.stringify(r.scan.stats));
+    const { d } = await waitStatus(root, r.data.id, 'ready', 15000);
+    assert.equal(d.embedded, d.chunk_count); assert.equal(mock.accepted, before, 'không được gọi Voyage lần nào');
+    assert.equal((await call(`/api/admin/docs/${r.data.id}`, { method: 'DELETE', token: root })).status, 200);
   });
 
   await t.test('chat: câu hỏi lặp lại (sau khi chuẩn hóa) không tốn thêm yêu cầu Voyage', async () => {
@@ -193,7 +235,9 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
   });
 
   await t.test('server khởi động lại giữa chừng → tự chạy tiếp đúng chỗ dở, không trùng, không thiếu đoạn', async () => {
-    const r = await upload(root, 'luat-mau.md', { title: 'MD mẫu' });
+    // sửa mỗi dòng một chút để không đoạn nào trùng với kho (trùng thì vector được dùng lại và xong ngay, không còn "lúc dở")
+    const variant = Buffer.from(fs.readFileSync(path.join(FX, 'luat-mau.md'), 'utf8').split('\n').map(l => l.startsWith('#') || !l.trim() ? l : l + ' (bản sửa)').join('\n'));
+    const r = await upload(root, 'luat-mau.md', { title: 'MD mẫu' }, variant);
     const id = r.data.id;
     let before; for (let i = 0; i < 100; i++) { before = (await call('/api/admin/docs', { token: root })).data.find(d => d.id === id); if (before.embedded > 0 && before.embedded < before.chunk_count) break; await sleep(100); }
     assert.ok(before.embedded > 0 && before.embedded < before.chunk_count, 'phải bắt được lúc đang dở');
@@ -231,5 +275,87 @@ test('end-to-end: quyền admin + lập chỉ mục nền', { skip, timeout: 240
     await sleep(1500);
     assert.equal((await call('/healthz')).status, 200);
     assert.equal((await pool.query('select count(*)::int n from chunks where document_id = $1', [r.data.id])).rows[0].n, 0);
+  });
+
+  // ================= Tab Biểu mẫu =================
+  await t.test('biểu mẫu Word: admin quét vùng tô màu → lưu → người dùng tải Excel/CSV lên → xuất Word/PDF giữ nguyên định dạng', async () => {
+    const JSZip = require('jszip'), ExcelJS = require('exceljs');
+    const tplName = 'mau-12-tang-von.docx', orig = fs.readFileSync(path.join(FX, tplName));
+    const docText = async b => { const z = await JSZip.loadAsync(b); return [...(await z.file('word/document.xml').async('string')).matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map(m => m[1]).join(''); };
+    const nParas = async b => ((await (await JSZip.loadAsync(b)).file('word/document.xml').async('string')).match(/<w:p[ >]/g) || []).length;
+
+    assert.equal((await call('/api/admin/templates/scan', { method: 'POST', token: u2t, form: fileForm(tplName) })).status, 403, 'user thường không được quét mẫu');
+    const sc = await call('/api/admin/templates/scan', { method: 'POST', token: root, form: fileForm(tplName) });
+    assert.equal(sc.status, 200, JSON.stringify(sc.data).slice(0, 300));
+    assert.ok(sc.data.slots.length >= 14 && sc.data.fields.length >= 9, 'phải nhận ra các vùng tô vàng: ' + sc.data.slots.length + '/' + sc.data.fields.length);
+    assert.ok(sc.data.slots.some(x => x.src === 'auto' && /chu/.test(x.format)), 'phải tự thêm vùng "bằng chữ"');
+    assert.ok(sc.data.fields.some(f => f.key === 'ngay_lap' && f.type === 'date') && sc.data.fields.some(f => f.type === 'money'));
+
+    const cfg = { slots: sc.data.slots, fields: sc.data.fields, clear_highlight: true };
+    const bad = await call('/api/admin/templates', { method: 'POST', token: root, form: fileForm(tplName, { name: 'Hỏng', config: JSON.stringify({ ...cfg, slots: [{ ...cfg.slots[0], format: '{{khong_co}}' }] }) }) });
+    assert.equal(bad.status, 422, 'trường chưa khai báo phải bị từ chối');
+    const mk = await call('/api/admin/templates', { method: 'POST', token: root, form: fileForm(tplName, { name: 'Tăng vốn điều lệ', description: 'Mẫu 12', config: JSON.stringify(cfg) }) });
+    assert.equal(mk.status, 201, JSON.stringify(mk.data)); const tid = mk.data.id;
+
+    const list = (await call('/api/templates', { token: u2t })).data, tpl = list.templates.find(x => x.id === tid);
+    assert.ok(tpl && tpl.fields.length === cfg.fields.length); assert.equal(typeof list.pdf, 'boolean');
+    const fields = tpl.fields;
+
+    // tệp mẫu để điền: Excel và CSV có đúng tiêu đề cột
+    const x = await callBuf(`/api/templates/${tid}/sample?format=xlsx`, { token: u2t }); assert.equal(x.status, 200);
+    const wb = new ExcelJS.Workbook(); await wb.xlsx.load(x.buf);
+    assert.deepEqual(wb.worksheets[0].getRow(1).values.slice(1), fields.map(f => f.label));
+    const csv = await callBuf(`/api/templates/${tid}/sample?format=csv`, { token: u2t });
+    assert.ok(csv.buf.subarray(0, 3).equals(Buffer.from([0xEF, 0xBB, 0xBF])) && csv.buf.toString('utf8').includes(fields[0].label));
+
+    // người dùng điền 2 dòng và tải CSV (dấu ; như Excel tiếng Việt) lên
+    const val = (f, i) => ({ ten_doanh_nghiep: i ? 'Công ty Hai' : 'Công ty Test', dia_danh: 'Hà Nội', ngay_lap: '15/11/2026', von_dieu_le_sau_khi_thay_doi: '25.000.000.000', von_dieu_le_da_dang_ky: '1.005.000.000' }[f.key]
+      ?? ({ money: '5.000.000', percent: '100', date: '01/01/2026', tax_code: '0108123456', id_card: '012345678901', number: '5' }[f.type] || 'Giá trị ' + f.key));
+    const q = v => '"' + String(v).replace(/"/g, '""') + '"';
+    const csvText = '\uFEFF' + [fields.map(f => q(f.label)).join(';'), ...[0, 1].map(i => fields.map(f => q(val(f, i))).join(';'))].join('\r\n');
+    const pr = await call(`/api/templates/${tid}/parse`, { method: 'POST', token: u2t, form: fileForm('du-lieu.csv', {}, Buffer.from(csvText, 'utf8')) });
+    assert.equal(pr.status, 200, JSON.stringify(pr.data).slice(0, 200)); assert.equal(pr.data.rows.length, 2);
+    assert.ok(Object.values(pr.data.mapping).every(Boolean), 'mọi cột phải tự ghép được: ' + JSON.stringify(pr.data.mapping));
+    const rows = pr.data.rows.map(r => Object.fromEntries(pr.data.headers.map((h, i) => [pr.data.mapping[i], r[i]])));
+
+    const ck = await call(`/api/templates/${tid}/check`, { method: 'POST', token: u2t, json: { rows } });
+    assert.equal(ck.data.ok, true, JSON.stringify(ck.data.rows[0].issues));
+    const badRows = [{ ...rows[0], ma_so_doanh_nghiep_ma_so_thue: '123' }];
+    const ck2 = await call(`/api/templates/${tid}/check`, { method: 'POST', token: u2t, json: { rows: badRows } });
+    assert.equal(ck2.data.ok, false); assert.match(Object.values(ck2.data.rows[0].issues)[0], /10 hoặc 13/);
+    assert.equal((await call(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: badRows } })).status, 422, 'dữ liệu sai thì không xuất');
+
+    const g1 = await callBuf(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]], format: 'docx' } });
+    assert.equal(g1.status, 200, g1.buf.toString().slice(0, 200)); assert.match(g1.disp, /\.docx/);
+    const out = await docText(g1.buf), src = await docText(orig);
+    assert.ok(out.includes('CÔNG TY TEST'), 'tên doanh nghiệp (bộ lọc upper)'); assert.ok(out.includes('ngày 15 tháng 11 năm 2026') && out.includes('Hà Nội, ngày'));
+    assert.ok(out.includes('25.000.000.000'), 'số tiền có dấu chấm'); assert.ok(out.includes('hai mươi lăm tỷ đồng'), '"bằng chữ" tự khớp số tiền');
+    assert.ok(out.includes('một tỷ không trăm lẻ năm triệu đồng'));
+    assert.ok(!out.includes('HÙNG DUY') && !out.includes('279.000.000.000') && !out.includes('hai trăm bảy mươi chín tỷ'), 'không còn dữ liệu cũ');
+    assert.ok(out.includes('Thời điểm thay đổi vốn: 18/08/2026'), 'phần không được chọn phải giữ nguyên');
+    assert.equal(await nParas(g1.buf), await nParas(orig), 'không thêm/bớt đoạn văn');
+    assert.ok(!/w:highlight/.test(await (await JSZip.loadAsync(g1.buf)).file('word/document.xml').async('string')), 'đã xóa màu tô');
+    assert.ok(!out.includes('{{'), 'không sót chỗ trống');
+    for (const n of ['word/styles.xml', 'word/settings.xml', 'word/theme/theme1.xml', 'word/fontTable.xml']) {   // các phần định dạng chép nguyên bản
+      assert.ok((await (await JSZip.loadAsync(g1.buf)).file(n).async('nodebuffer')).equals(await (await JSZip.loadAsync(orig)).file(n).async('nodebuffer')), n + ' phải y hệt bản gốc');
+    }
+
+    const g2 = await callBuf(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows, format: 'docx' } });
+    assert.match(g2.type, /zip/); const zf = Object.keys((await JSZip.loadAsync(g2.buf)).files);
+    assert.equal(zf.length, 2); assert.ok(zf.every(n => n.endsWith('.docx')));
+
+    if (list.pdf) {   // máy chạy test có LibreOffice
+      const gp = await callBuf(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]], format: 'pdf' } });
+      assert.equal(gp.status, 200, gp.buf.toString().slice(0, 200)); assert.equal(gp.buf.subarray(0, 4).toString(), '%PDF');
+    } else assert.equal((await call(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]], format: 'pdf' } })).status, 501);
+
+    assert.equal((await call(`/api/templates/${tid}/map-ai`, { method: 'POST', token: u2t, json: { headers: ['Cột lạ'], taken: [] } })).status, 200);
+    const tst = await callBuf('/api/admin/templates/test', { method: 'POST', token: root, form: (() => { const f = new FormData(); f.append('id', tid); return f; })() });
+    assert.equal(tst.status, 200, tst.buf.toString().slice(0, 200)); assert.ok((await docText(tst.buf)).length > 500);
+
+    await call(`/api/admin/templates/${tid}`, { method: 'PUT', token: root, json: { active: false } });
+    assert.ok(!(await call('/api/templates', { token: u2t })).data.templates.some(x => x.id === tid), 'mẫu tắt thì người dùng không thấy');
+    assert.equal((await call(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]] } })).status, 404);
+    assert.equal((await call(`/api/admin/templates/${tid}`, { method: 'DELETE', token: root })).status, 200);
   });
 });

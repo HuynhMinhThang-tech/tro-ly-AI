@@ -6,7 +6,7 @@ Tên, giọng điệu của trợ lý do quản trị viên đặt trong giao di
 ## Cách hoạt động
 1. Admin chọn tệp **Markdown (.md) hoặc văn bản (.txt)** → hệ thống **đọc nguyên văn, không chuyển đổi gì** rồi **quét trước** (chưa lưu gì). Tệp định dạng khác (PDF, Word, HTML...) bị từ chối kèm thông báo yêu cầu chuyển sang `.md` hoặc `.txt`. Tệp chỉ tải lên **một lần**: kết quả quét được giữ ở máy chủ 20 phút, bước xác nhận chỉ gửi mã quét. Admin xem báo cáo và nội dung xem trước rồi xác nhận.
 2. Nội dung được tách đoạn theo cây tiêu đề Markdown (**Chương › Mục › Điều**) và ghi vào Neon **ngay lập tức** (trả lời trong chưa đầy 1 giây).
-3. Embedding (Voyage) chạy **nền**, từng lô nhỏ đúng hạn mức, có thanh tiến độ trong bảng tài liệu. Tài liệu chỉ vào kết quả tìm kiếm khi đã lập chỉ mục xong. Server khởi động lại giữa chừng thì tự chạy tiếp; lỗi thì bấm **Thử lại**, không mất đoạn nào.
+3. Embedding (Voyage) chạy **nền**, từng lô nhỏ đúng hạn mức, có thanh tiến độ trong bảng tài liệu. Tài liệu **tìm được bằng từ khóa ngay khi vừa tải lên**; tìm theo ngữ nghĩa (vector) bổ sung dần khi embedding xong (xem "Tìm kiếm lai").
 3. Người dùng hỏi → tìm 6 đoạn liên quan nhất (chỉ trong văn bản còn hiệu lực) → model Groq trả lời, ghi nhãn [số] và hiện nguồn.
 4. Đăng ký → **chờ duyệt** → admin duyệt mới đăng nhập được. Mật khẩu băm bcrypt, phiên là token ngẫu nhiên lưu bản băm trong database.
 
@@ -28,6 +28,16 @@ Gói Voyage **chưa thanh toán** chỉ cho **3 yêu cầu/phút và 10.000 toke
 
 Muốn nhanh hơn: thêm phương thức thanh toán ở Voyage rồi đặt `EMBED_RPM` và `EMBED_TPM` theo hạn mức ghi trên trang Voyage của bạn (xem `.env.example`). Hạn mức Voyage hiện hành do Voyage quy định và có thể thay đổi, hãy đối chiếu trên trang của họ.
 
+## Tìm kiếm lai (từ khóa + ngữ nghĩa)
+Mỗi câu hỏi đi qua ba nguồn (`lib/search.js`), rồi gộp bằng RRF và lấy 6 đoạn tốt nhất gửi cho AI:
+1. **"Điều N"**: câu hỏi nhắc "Điều 12", "điều 5 và 6", "Điều 78a" thì tra thẳng theo tiêu đề đoạn bằng SQL, không cần embedding, nên chính xác tuyệt đối. Nếu câu hỏi nêu tên luật hoặc số hiệu thì chỉ giữ điều của văn bản đó.
+2. **Từ khóa** (full-text của Postgres, bỏ dấu, cộng điểm cho cụm hai từ liền nhau): tìm được ngay cả tài liệu **đang lập chỉ mục** và khi Voyage đang bận.
+3. **Ngữ nghĩa** (pgvector): hiểu câu hỏi diễn đạt khác với văn bản. Dùng `hnsw.ef_search = 100`, và quét lặp (`iterative_scan`) khi pgvector từ 0.8 trở lên, để bộ lọc "còn hiệu lực" không làm thiếu kết quả.
+
+Nếu không tạo được vector cho câu hỏi (Voyage bận, lỗi hoặc chưa cấu hình khóa), chatbot **vẫn trả lời bằng từ khóa** và kèm một dòng lưu ý cho người dùng, thay vì báo lỗi.
+
+**Dùng lại vector:** mỗi đoạn có `content_hash` (SHA-256 của tiêu đề + nội dung). Khi tải lên tài liệu có đoạn y hệt đoạn đã lập chỉ mục (ví dụ bản sửa đổi của một văn bản), vector được chép lại, không tốn lượt Voyage. Báo cáo quét tệp cho biết số đoạn dùng lại và thời gian ước tính chỉ tính phần còn lại. Chỉ dùng lại vector của đúng model đang chạy (`chunks.embed_model`).
+
 ## Quản lý quyền admin
 Trang **Người dùng** có nút **Cấp quyền admin** / **Gỡ quyền admin** (bấm hai lần để xác nhận). Có hiệu lực ngay, không cần đăng nhập lại. Chốt an toàn: chỉ cấp được cho tài khoản **đã duyệt**; không tự gỡ quyền của chính mình; không gỡ được tài khoản gốc (`ADMIN_EMAIL`); luôn còn ít nhất một admin. Mỗi lần đổi quyền được ghi vào log máy chủ.
 
@@ -45,6 +55,28 @@ Máy chủ quét lại lần nữa khi xác nhận nên không thể lách bằn
 | Ký tự lạ, chữ bị tách rời, ký tự lỗi mã hóa (dấu hiệu lỗi OCR) | Cảnh báo |
 | Trùng nội dung hoặc trùng số hiệu với tài liệu đã có | Cảnh báo |
 | Cần nhiều token embedding (> 500.000) | Cảnh báo |
+
+## Biểu mẫu tự động điền (tab "Biểu mẫu")
+Admin đăng biểu mẫu Word (.docx); người dùng tải Excel/CSV lên, hệ thống điền vào mẫu và xuất Word/PDF **giữ nguyên định dạng**.
+
+**Admin** (Quản trị → Biểu mẫu): trong Word, tô màu (highlight) đúng những chỗ cần thay rồi tải tệp lên. Hệ thống:
+- nhận diện từng vùng tô màu, gợi ý tên trường (theo chữ đứng trước, tiêu đề bảng...), các vùng cùng giá trị (ví dụ số vốn xuất hiện 3 lần) dùng chung một trường;
+- tự thêm phần "bằng chữ" đi kèm số tiền dù chưa tô màu, để số và chữ luôn khớp;
+- cho bôi đen thêm vùng chưa tô màu (ví dụ "Thời điểm thay đổi vốn");
+- cho đặt tên cột, kiểu dữ liệu (chữ, số tiền, phần trăm, ngày, mã số thuế, CCCD), bắt buộc hay không, ví dụ; có nút "Tạo thử" để kiểm tra bố cục.
+
+Nội dung điền vào mỗi vùng viết dạng `{{tên_trường}}` kèm bộ lọc tùy chọn: `upper`, `lower`, `title`, `so` (279.000.000.000), `chu` (hai trăm bảy mươi chín tỷ), `chu_hoa`, `ngay`, `thang`, `nam`, `ngay1`, `thang1`, `dmy`, `ngay_thang_nam`. Ví dụ `{{dia_danh}}, ngày {{ngay_lap|ngay}} tháng {{ngay_lap|thang}} năm {{ngay_lap|nam}}`.
+
+**Người dùng**: chọn biểu mẫu → tải tệp Excel/CSV mẫu → điền → tải lên → kiểm tra đối chiếu cột (AI chỉ gợi ý ghép cột, và chỉ nhận **tiêu đề cột**, không nhận dữ liệu) → xem lỗi từng ô → tạo văn bản (một dòng một tệp, nhiều dòng thành ZIP). Cũng có chế độ nhập tay.
+
+**Vì sao không lệch định dạng:** chỉ chữ bên trong các thẻ `<w:t>` của đúng vùng được chọn bị đổi; mọi thứ khác (kiểu chữ, bảng, lề, đầu/chân trang, font...) chép nguyên từ tệp gốc (`lib/docx-template.js`). Số, chữ, ngày do code xác định, không dùng AI. Dữ liệu người dùng xử lý trong bộ nhớ rồi bỏ; chỉ ghi ai dùng mẫu nào và số dòng (`template_runs`).
+
+**Xuất PDF** cần LibreOffice trên máy chủ (hoặc một dịch vụ Gotenberg):
+- Máy có LibreOffice: tự phát hiện lệnh `soffice` (hoặc đặt `SOFFICE_PATH`).
+- Máy chủ khác: đặt `GOTENBERG_URL=http://...` (Gotenberg là LibreOffice đóng gói sẵn).
+- Triển khai bằng Docker: dùng `Dockerfile` kèm theo (đã cài LibreOffice và font Liberation, tương thích Times New Roman).
+- Không có cả hai (ví dụ Vercel/Render bản Node thường): giao diện tự khóa lựa chọn PDF, vẫn xuất Word; người dùng mở Word và chọn "Lưu thành PDF".
+PDF do LibreOffice dựng nên ngắt dòng có thể lệch rất nhẹ so với Word nếu máy chủ thiếu font Times New Roman. Giới hạn: `MAX_FORM_ROWS` (50 dòng/lần), `MAX_PDF_ROWS` (10 dòng/lần).
 
 ## Cài đặt
 1. **Neon** (neon.com): tạo project → copy chuỗi kết nối dạng *pooled* (có `-pooler`) làm `DATABASE_URL`.
@@ -83,7 +115,7 @@ TEST_DATABASE_URL=postgresql://user:pass@127.0.0.1:5432/trolyai_test npm test
 Tên database bắt buộc chứa chữ `test` vì bài kiểm tra **xóa sạch dữ liệu** trong đó (cần PostgreSQL có pgvector). Không bao giờ trỏ vào database thật.
 
 ## Nâng cấp từ bản cũ
-Khởi động lại là xong: `schema.sql` tự thêm các cột `documents.markdown`, `status`, `error` (tài liệu cũ mặc định `ready`). Tài liệu đã lập chỉ mục trước đây vẫn tra cứu bình thường nhưng chưa có bản Markdown và nhãn trích dẫn chưa có đường dẫn Chương. Muốn có, tải lại tệp (tắt/xóa bản cũ). Lưu ý: số tự động đánh bằng chức năng đánh số của Word có thể không nằm trong chữ của tệp `.docx`, hãy kiểm tra ở bản Markdown xem trước.
+Khởi động lại là xong (chạy `npm install` trước vì có thêm thư viện): `schema.sql` tự thêm hàm `vn_fold`, các cột `chunks.content_hash`, `embed_model`, `tsv` (kèm chỉ mục) và hai bảng `templates`, `template_runs`; vector cũ được gán nhãn model đang cấu hình. Lần khởi động đầu có thể mất vài giây nếu kho đã nhiều đoạn. Trước đó `schema.sql` đã tự thêm các cột `documents.markdown`, `status`, `error` (tài liệu cũ mặc định `ready`). Tài liệu đã lập chỉ mục trước đây vẫn tra cứu bình thường nhưng chưa có bản Markdown và nhãn trích dẫn chưa có đường dẫn Chương. Muốn có, tải lại tệp (tắt/xóa bản cũ). Lưu ý: số tự động đánh bằng chức năng đánh số của Word có thể không nằm trong chữ của tệp `.docx`, hãy kiểm tra ở bản Markdown xem trước.
 
 ## Chưa có
 OCR tự động, trả lời dạng streaming, 👍/👎, giới hạn số câu hỏi mỗi người, đặt lại mật khẩu, lập chỉ mục chạy nền.

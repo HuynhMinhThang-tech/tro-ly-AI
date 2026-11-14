@@ -185,8 +185,9 @@ body[data-auth="in"] .auth{display:none}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .scan li.i-block,:root:not([data-theme="light"]) .t-bad{color:#f08a7c}}
 :root[data-theme="dark"] .scan li.i-block,:root[data-theme="dark"] .t-bad{color:#f08a7c}
 </style>
+<link rel="stylesheet" href="forms.css">
 </head>
-<body data-view="user" data-auth="out">
+<body data-view="user" data-auth="out" data-utab="chat">
 <div class="app">
   <header>
     <div class="brand">
@@ -194,6 +195,10 @@ body[data-auth="in"] .auth{display:none}
       <div><b id="brandName">Trợ lý AI</b><span id="brandTag">Hỏi đáp dựa trên kho tài liệu của đơn vị</span></div>
     </div>
     <div class="spacer"></div>
+    <div class="seg" id="uSeg" role="group" aria-label="Chức năng" hidden>
+      <button type="button" id="uChat" aria-pressed="true">Trò chuyện</button>
+      <button type="button" id="uForms" aria-pressed="false">Biểu mẫu</button>
+    </div>
     <div class="seg" id="seg" role="group" aria-label="Chuyển giao diện" hidden>
       <button type="button" id="bUser" aria-pressed="true">Người dùng</button>
       <button type="button" id="bAdmin" aria-pressed="false">Quản trị</button>
@@ -256,6 +261,10 @@ body[data-auth="in"] .auth{display:none}
           <div class="foot">Công cụ hỗ trợ tra cứu, không thay thế ý kiến pháp lý chính thức. Hãy đối chiếu với văn bản gốc.</div>
         </div>
       </div>
+      <div id="formPane">
+        <aside id="fAside"></aside>
+        <div class="panel" id="fMain"><div class="wrap"></div></div>
+      </div>
     </section>
 
     <!-- ADMIN VIEW -->
@@ -265,6 +274,7 @@ body[data-auth="in"] .auth{display:none}
         <button class="item" data-tab="docs" aria-current="true">Tài liệu</button>
         <button class="item" data-tab="users" aria-current="false">Người dùng <span class="badge" id="pendBadge" hidden></span></button>
         <button class="item" data-tab="bot" aria-current="false">Thiết lập bot</button>
+        <button class="item" data-tab="forms" aria-current="false">Biểu mẫu</button>
         <button class="item" data-tab="ai" aria-current="false">Mô hình AI</button>
       </aside>
 
@@ -288,6 +298,8 @@ body[data-auth="in"] .auth{display:none}
           <tbody id="docRows"></tbody>
         </table></div></div>
       </div></div>
+
+      <div class="panel" id="tab-forms" hidden><div class="wrap" id="adminForms"></div></div>
 
       <div class="panel" id="tab-users" hidden><div class="wrap">
         <h2>Người dùng</h2>
@@ -381,13 +393,19 @@ function setView(v){
   $("bAdmin").setAttribute("aria-pressed",v==="admin");
   if(v==="user")fitQ();
 }
+function setUTab(k){
+  document.body.setAttribute("data-utab",k);
+  $("uChat").setAttribute("aria-pressed",k==="chat");$("uForms").setAttribute("aria-pressed",k==="forms");
+  if(k==="forms")Forms.loadUser();else fitQ();
+}
+$("uChat").onclick=function(){setUTab("chat")};$("uForms").onclick=function(){setUTab("forms")};
 $("bUser").onclick=function(){setView("user")};
 $("bAdmin").onclick=function(){setView("admin");loadDocs();loadUsers()};
 document.querySelectorAll("[data-tab]").forEach(function(b){
   b.addEventListener("click",function(){
     var k=b.getAttribute("data-tab");
     document.querySelectorAll("[data-tab]").forEach(function(x){x.setAttribute("aria-current",x===b)});
-    ["docs","users","bot","ai"].forEach(function(t){$("tab-"+t).hidden=(t!==k)});if(k==="ai")loadAI();
+    ["docs","users","bot","ai","forms"].forEach(function(t){$("tab-"+t).hidden=(t!==k)});if(k==="ai")loadAI();if(k==="forms")Forms.loadAdmin();
   });
 });
 
@@ -428,14 +446,14 @@ async function enter(u){
   document.body.setAttribute("data-auth","in");
   $("uName").textContent=u.name;
   var g=hiInfo();$("hiText").textContent=g.t;$("hiIcon").innerHTML=g.i;
-  $("seg").hidden=u.role!=="admin";
-  setView("user");
+  $("seg").hidden=u.role!=="admin";$("uSeg").hidden=false;
+  setView("user");setUTab("chat");
   try{applySettings(await api("/api/settings"))}catch(e){}
   newChat();
 }
 function signOut(silent){
   if(tok&&!silent)api("/api/logout","POST",null,true).catch(function(){});tok=null;keep();cid=null;pending=null;
-  document.body.setAttribute("data-auth","out");
+  document.body.setAttribute("data-auth","out");$("uSeg").hidden=true;
   setView("user");authTab("login");
   if(!silent)toast("Đã đăng xuất.");
 }
@@ -531,7 +549,9 @@ async function send(text){
   var w=addMsg("bot","Đang tra cứu tài liệu…");
   try{
     var d=await api("/api/chat","POST",{message:text,conversation_id:cid});
-    cid=d.conversation_id;w.remove();addMsg("bot",d.answer,d.sources);loadConvs();
+    cid=d.conversation_id;w.remove();var rw=addMsg("bot",d.answer,d.sources);
+    if(d.notice){var nh=document.createElement("div");nh.className="hint";nh.textContent=d.notice;rw.querySelector(".msg").appendChild(nh)}
+    loadConvs();
   }catch(x){w.remove();addMsg("bot","Chưa trả lời được lúc này: "+x.message)}
   busy=false;
 }
@@ -721,5 +741,6 @@ $("aiSave").onclick=async function(){
 /* ---------- Khởi động: khôi phục phiên nếu còn ---------- */
 if(tok){api("/api/me").then(enter).catch(function(){signOut(true)})}
 </script>
+<script src="forms.js"></script>
 </body>
 </html>

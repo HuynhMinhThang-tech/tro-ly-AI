@@ -2,7 +2,8 @@ require('dotenv').config();
 const fs = require('fs'), path = require('path'), crypto = require('crypto');
 const express = require('express'), multer = require('multer'), bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
-const { analyze, embed, estTokens, estMinutes } = require('./lib/ingest');
+const { analyze, embed, estTokens, estMinutes, modelTag } = require('./lib/ingest');
+const { search } = require('./lib/search');
 const { createIndexer } = require('./lib/indexer');
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL, max: 5, idleTimeoutMillis: 30000 });
@@ -188,13 +189,19 @@ async function prepare(file) {
   a.text = '';                                              // chữ gốc không cần giữ lại, tiết kiệm bộ nhớ
   return { name, size: file.size, a };
 }
+const chunkHash = c => crypto.createHash('sha256').update((c.heading || '') + '\n' + c.content).digest('hex');   // phải giống cột content_hash trong schema.sql
 // Các kiểm tra phụ thuộc database (dung lượng, trùng lặp): chạy lại lúc xác nhận để luôn dùng số liệu mới nhất
 async function check(prep, body) {
   const { name, a } = prep;
   const issues = [...a.issues], add = (level, text) => issues.push({ level, text });
   const sizeMB = prep.size / 1048576, n = a.chunks.length;
   const bytes = a.chunks.reduce((s, c) => s + Buffer.byteLength(c.heading + c.content), 0);
-  const tokens = a.chunks.reduce((s, c) => s + estTokens(c.heading + '\n' + c.content), 0), minutes = estMinutes(tokens);
+  // Đoạn có nội dung y hệt đoạn đã lập chỉ mục trong kho thì dùng lại vector, không tốn lượt Voyage
+  const hashes = a.chunks.map(c => chunkHash(c));
+  const known = n ? new Set((await pool.query('select distinct content_hash from chunks where content_hash = any($1) and embedding is not null and embed_model = $2',
+    [hashes, modelTag()])).rows.map(r => r.content_hash)) : new Set();
+  const reused = hashes.filter(h => known.has(h)).length;
+  const tokens = a.chunks.reduce((s, c, i) => s + (known.has(hashes[i]) ? 0 : estTokens(c.heading + '\n' + c.content)), 0), minutes = estMinutes(tokens);
   const mdBytes = Buffer.byteLength(a.markdown || '');
   const estMB = (n * 8192 + bytes + mdBytes) / 1048576;   // vector 1024 chiều + chỉ mục + văn bản + bản Markdown
   const used = Number((await pool.query('select pg_database_size(current_database()) as s')).rows[0].s) / 1048576;
@@ -204,6 +211,7 @@ async function check(prep, body) {
   else if (n > LIM.warnChunks) add('warn', `Văn bản tách thành ${n} đoạn (ngưỡng cảnh báo ${LIM.warnChunks}), việc lập chỉ mục có thể mất vài phút.`);
   if (n && used + estMB > LIM.dbMB) add('block', `Dung lượng database sẽ vượt giới hạn: đang dùng ${used.toFixed(0)} MB, tệp này cần thêm khoảng ${estMB.toFixed(1)} MB, giới hạn ${LIM.dbMB} MB. Hãy xóa bớt tài liệu cũ hoặc nâng gói.`);
   else if (n && used + estMB > LIM.dbMB * 0.8) add('warn', `Database sắp đầy: sau khi thêm sẽ dùng khoảng ${(used + estMB).toFixed(0)} / ${LIM.dbMB} MB.`);
+  if (reused) add('info', `${reused}/${n} đoạn trùng với tài liệu đã có trong kho nên dùng lại vector, không tốn lượt Voyage${reused === n ? ' (tài liệu dùng được ngay)' : ''}.`);
   if (n && minutes >= 10) add('warn', `Tạo embedding sẽ mất khoảng ${minutes} phút (chạy nền, vẫn dùng chatbot bình thường). Thêm phương thức thanh toán ở Voyage rồi đặt EMBED_RPM/EMBED_TPM để nhanh hơn.`);
 
   if (a.hash) {
@@ -219,7 +227,7 @@ async function check(prep, body) {
   return { name, chunks: a.chunks, hash: a.hash, markdown: a.markdown, report: {
     level, issues,
     file: { name, size_mb: +sizeMB.toFixed(2), type: a.type, pages: a.pages },
-    stats: { chunks: n, est_tokens: tokens, est_minutes: minutes, est_mb: +estMB.toFixed(2), db_used_mb: +used.toFixed(1), db_limit_mb: LIM.dbMB },
+    stats: { chunks: n, reused, est_tokens: tokens, est_minutes: minutes, est_mb: +estMB.toFixed(2), db_used_mb: +used.toFixed(1), db_limit_mb: LIM.dbMB },
     preview: a.chunks.slice(0, 4).map(c => c.heading),
     markdown_preview: (a.markdown || '').slice(0, 3000),
     markdown_chars: (a.markdown || '').length
@@ -259,7 +267,7 @@ app.post('/api/admin/docs', auth, admin, up.single('file'), async (q, r) => {
   if (s.report.level === 'warn' && !force)
     return r.status(409).json({ error: 'Tệp có cảnh báo, cần xác nhận lại.', report: s.report });
   const c = await pool.connect();
-  let doc;
+  let doc, reused = 0;
   try {
     await c.query('begin');
     doc = (await c.query(
@@ -268,14 +276,21 @@ app.post('/api/admin/docs', auth, admin, up.single('file'), async (q, r) => {
        String(body.doc_number || '').trim().slice(0, 60) || null, s.name, s.hash, s.chunks.length, s.markdown])).rows[0];
     for (let i = 0; i < s.chunks.length; i += 200) {
       const part = s.chunks.slice(i, i + 200), vals = [], ph = [];
-      part.forEach((ch, j) => { vals.push(doc.id, ch.heading, ch.content); ph.push(`($${j * 3 + 1},$${j * 3 + 2},$${j * 3 + 3})`); });
-      await c.query('insert into chunks(document_id, heading, content) values ' + ph.join(','), vals);
+      part.forEach((ch, j) => { vals.push(doc.id, ch.heading, ch.content, chunkHash(ch)); ph.push(`($${j * 4 + 1},$${j * 4 + 2},$${j * 4 + 3},$${j * 4 + 4})`); });
+      await c.query('insert into chunks(document_id, heading, content, content_hash) values ' + ph.join(','), vals);
     }
+    // Chép vector từ các đoạn y hệt đã có trong kho (cùng model); phần còn lại sẽ được lập chỉ mục nền như thường lệ
+    reused = (await c.query(
+      `update chunks c set embedding = src.embedding, embed_model = src.embed_model
+         from (select distinct on (content_hash) content_hash, embedding, embed_model from chunks
+                where embedding is not null and embed_model = $2 and document_id <> $1 and content_hash in (select content_hash from chunks where document_id = $1)
+                order by content_hash, id) src
+        where c.document_id = $1 and c.content_hash = src.content_hash and c.embedding is null`, [doc.id, modelTag()])).rowCount;
     await c.query('commit');
   } catch (e) { await c.query('rollback'); throw e; } finally { c.release(); }
   if (body.scan_id) SCANS.delete(String(body.scan_id));
   indexer.kick();
-  r.status(202).json({ ...doc, est_minutes: s.report.stats.est_minutes });
+  r.status(202).json({ ...doc, reused, est_minutes: s.report.stats.est_minutes });
 });
 app.post('/api/admin/docs/:id/retry', auth, admin, async (q, r) => {
   const { rowCount } = await pool.query("update documents set status = 'processing', error = null where id = $1 and status = 'error'", [q.params.id]);
@@ -381,20 +396,17 @@ app.post('/api/chat', auth, async (q, r) => {
     if (rows.length) history = (await pool.query('select role, content from messages where conversation_id = $1 order by id desc limit 10', [cid])).rows.reverse();
     else cid = null;
   }
-  let hits = [], qv;
+  // Tạo vector cho câu hỏi; nếu Voyage bận / lỗi / chưa cấu hình thì vẫn trả lời được bằng tìm kiếm từ khóa (kèm lời nhắc cho người dùng)
+  let qv = null, notice = null;
   try { qv = await queryVec(text); }
   catch (e) {
-    console.error('Tạo embedding cho câu hỏi lỗi:', e.message);
-    if (e.busy) return r.set('Retry-After', String(e.retryAfter)).status(429).json({ error: e.message });
-    if (e.status === 401 || e.status === 403) return r.status(502).json({ error: 'API key Voyage chưa hợp lệ, vui lòng báo quản trị viên.' });
-    if (/VOYAGE_API_KEY/.test(e.message)) return r.status(503).json({ error: 'Quản trị viên chưa cấu hình VOYAGE_API_KEY.' });
-    return r.status(502).json({ error: 'Dịch vụ tạo embedding (Voyage) đang gặp sự cố, vui lòng thử lại sau.' });
+    console.error('Tạo embedding cho câu hỏi lỗi, chuyển sang tìm theo từ khóa:', e.message);
+    notice = e.busy ? 'Dịch vụ tìm kiếm ngữ nghĩa đang bận nên tôi tra theo từ khóa; kết quả có thể kém chính xác hơn, bạn thử hỏi lại sau ít phút.'
+      : 'Dịch vụ tìm kiếm ngữ nghĩa đang tạm thời không dùng được nên tôi tra theo từ khóa; kết quả có thể kém chính xác hơn.';
   }
-  try {
-    hits = (await pool.query(
-      'select c.heading, c.content, d.title, d.doc_number from chunks c join documents d on d.id = c.document_id where d.active and d.status = \'ready\' order by c.embedding <=> $1::vector limit 6',
-      [JSON.stringify(qv)])).rows;
-  } catch (e) {
+  let hits = [], found;
+  try { found = await search(pool, { text, vec: qv }); hits = found.hits; }
+  catch (e) {
     console.error('Truy vấn tài liệu lỗi:', e.message);
     return r.status(502).json({ error: 'Không truy cập được cơ sở dữ liệu, vui lòng thử lại sau ít phút.' });
   }
@@ -423,8 +435,11 @@ app.post('/api/chat', auth, async (q, r) => {
   if (!cid) cid = (await pool.query('insert into conversations(user_id, title) values ($1,$2) returning id', [q.me.id, text.slice(0, 60)])).rows[0].id;
   await pool.query('insert into messages(conversation_id, role, content, sources) values ($1,$2,$3,null), ($1,$4,$5,$6::jsonb)',
     [cid, 'user', text, 'assistant', answer, JSON.stringify(sources)]);
-  r.json({ conversation_id: cid, answer, sources });
+  r.json({ conversation_id: cid, answer, sources, mode: found.mode, notice });
 });
+
+// Tab Biểu mẫu: admin tải mẫu Word, người dùng tải Excel/CSV lên để điền tự động rồi xuất Word/PDF (xem lib/templates.js)
+require('./lib/templates').mountTemplates(app, { pool, auth, admin, up, groqKey, GROQ, getSettings, DEFAULT_MODEL });
 
 app.use((e, q, r, n) => {
   if (e.code === 'LIMIT_FILE_SIZE') return r.status(413).json({ error: `Tệp vượt quá giới hạn ${LIM.maxFileMB} MB.` });
@@ -437,6 +452,8 @@ app.use((e, q, r, n) => {
 (async () => {
   try { await pool.query(fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf8')); }
   catch (e) { console.error('Không khởi tạo được database:', e.message); process.exit(1); }
+  // Vector tạo trước khi có cột embed_model: coi như của model đang cấu hình (bảng chunks chỉ chứa được vector 1024 chiều nên không thể lẫn kích thước khác)
+  await pool.query('update chunks set embed_model = $1 where embedding is not null and embed_model is null', [modelTag()]).catch(e => console.error('Gán nhãn model lỗi:', e.message));
   if (!process.env.VOYAGE_API_KEY) console.warn('Cảnh báo: chưa có VOYAGE_API_KEY, chưa thể lập chỉ mục và tìm kiếm.');
   if (!KEY) console.warn('Cảnh báo: chưa có APP_SECRET, admin chưa thể lưu API key Groq trong giao diện.');
   app.listen(process.env.PORT || 3000, () => console.log('Máy chủ chạy tại cổng ' + (process.env.PORT || 3000)));
