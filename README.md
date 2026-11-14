@@ -67,7 +67,12 @@ Admin đăng biểu mẫu Word (.docx); người dùng tải Excel/CSV lên, h�
 
 Nội dung điền vào mỗi vùng viết dạng `{{tên_trường}}` kèm bộ lọc tùy chọn: `upper`, `lower`, `title`, `so` (279.000.000.000), `chu` (hai trăm bảy mươi chín tỷ), `chu_hoa`, `ngay`, `thang`, `nam`, `ngay1`, `thang1`, `dmy`, `ngay_thang_nam`. Ví dụ `{{dia_danh}}, ngày {{ngay_lap|ngay}} tháng {{ngay_lap|thang}} năm {{ngay_lap|nam}}`.
 
-**Người dùng**: chọn biểu mẫu → tải tệp Excel/CSV mẫu → điền → tải lên → kiểm tra đối chiếu cột (AI chỉ gợi ý ghép cột, và chỉ nhận **tiêu đề cột**, không nhận dữ liệu) → xem lỗi từng ô → tạo văn bản (một dòng một tệp, nhiều dòng thành ZIP). Cũng có chế độ nhập tay.
+**Người dùng**: chọn biểu mẫu → tải tệp Excel/CSV mẫu → điền → tải lên → kiểm tra đối chiếu cột (AI chỉ gợi ý ghép cột, và chỉ nhận **tiêu đề cột**, không nhận dữ liệu) → xem lỗi từng ô → tạo văn bản (một dòng một tệp, nhiều dòng thành ZIP). Có nút **Hủy / xóa dữ liệu đã tải** và nút ✕ (hoặc "Bỏ các dòng còn lỗi") để loại dòng thiếu dữ liệu. Cũng có chế độ nhập tay.
+
+**Định dạng và ràng buộc nhập:**
+- Nhập tay: ô tiền chỉ nhận chữ số và tự thêm dấu chấm ngăn nghìn (25.000.000.000, kèm "đồng" và dòng "bằng chữ" để đối chiếu); ô tỷ lệ có ký hiệu % và không cho vượt 100; ô ngày luôn là dd/mm/yyyy (tự thêm dấu `/`, có nút lịch, không phụ thuộc ngôn ngữ trình duyệt); mã số thuế và CCCD chỉ nhận chữ số đúng độ dài. Thông báo lỗi lấy từ cùng bộ quy tắc kiểm tra của máy chủ nên luôn khớp với lúc xuất file.
+- Tệp Excel mẫu: ô tiền định dạng `#,##0` (Excel hiện dấu chấm nghìn theo máy), ô tỷ lệ hiện %, ô ngày hiện dd/mm/yyyy, ô mã số thuế/CCCD là chữ (không mất số 0 đầu); có chặn nhập sai và hộp gợi ý khi chọn ô. Ví dụ trong CSV mẫu cũng hiện đúng dạng chuẩn.
+- Khi đọc Excel, ô định dạng phần trăm thật của Excel (gõ 100% lưu là 1) được quy đổi về 100.
 
 **Vì sao không lệch định dạng:** chỉ chữ bên trong các thẻ `<w:t>` của đúng vùng được chọn bị đổi; mọi thứ khác (kiểu chữ, bảng, lề, đầu/chân trang, font...) chép nguyên từ tệp gốc (`lib/docx-template.js`). Số, chữ, ngày do code xác định, không dùng AI. Dữ liệu người dùng xử lý trong bộ nhớ rồi bỏ; chỉ ghi ai dùng mẫu nào và số dòng (`template_runs`).
 

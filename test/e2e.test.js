@@ -305,6 +305,9 @@ test('end-to-end: quyền admin + lập chỉ mục nền + tìm kiếm lai', { 
     const x = await callBuf(`/api/templates/${tid}/sample?format=xlsx`, { token: u2t }); assert.equal(x.status, 200);
     const wb = new ExcelJS.Workbook(); await wb.xlsx.load(x.buf);
     assert.deepEqual(wb.worksheets[0].getRow(1).values.slice(1), fields.map(f => f.label));
+    const mi = fields.findIndex(f => f.type === 'money') + 1, di = fields.findIndex(f => f.type === 'date') + 1;
+    assert.equal(wb.worksheets[0].getCell(2, mi).numFmt, '#,##0', 'ô tiền trong tệp mẫu có dấu ngăn nghìn');
+    assert.equal(wb.worksheets[0].getCell(2, di).numFmt, 'dd/mm/yyyy'); assert.equal(wb.worksheets[0].getCell(3, mi).dataValidation.type, 'whole');
     const csv = await callBuf(`/api/templates/${tid}/sample?format=csv`, { token: u2t });
     assert.ok(csv.buf.subarray(0, 3).equals(Buffer.from([0xEF, 0xBB, 0xBF])) && csv.buf.toString('utf8').includes(fields[0].label));
 
@@ -320,6 +323,8 @@ test('end-to-end: quyền admin + lập chỉ mục nền + tìm kiếm lai', { 
 
     const ck = await call(`/api/templates/${tid}/check`, { method: 'POST', token: u2t, json: { rows } });
     assert.equal(ck.data.ok, true, JSON.stringify(ck.data.rows[0].issues));
+    assert.equal(ck.data.rows[0].words.von_dieu_le_sau_khi_thay_doi, 'hai mươi lăm tỷ đồng', 'ô tiền trả kèm "bằng chữ" để người dùng đối chiếu');
+    assert.equal(ck.data.rows[0].shown.von_dieu_le_sau_khi_thay_doi, '25.000.000.000');
     const badRows = [{ ...rows[0], ma_so_doanh_nghiep_ma_so_thue: '123' }];
     const ck2 = await call(`/api/templates/${tid}/check`, { method: 'POST', token: u2t, json: { rows: badRows } });
     assert.equal(ck2.data.ok, false); assert.match(Object.values(ck2.data.rows[0].issues)[0], /10 hoặc 13/);

@@ -32,3 +32,23 @@ details summary{cursor:pointer}
 code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:12.5px}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .fm-snip mark,:root:not([data-theme="light"]) .fm-para mark{background:#5c4f00;color:#fff}}
 @media (max-width:760px){#formPane{flex-direction:column}#fAside{width:auto;border-right:0;border-bottom:1px solid var(--line);flex-direction:row;flex-wrap:wrap;overflow:visible}.fm-snip{max-width:none}}
+
+/* ô nhập tay có định dạng */
+.fm-f{display:flex;flex-direction:column;gap:4px;min-width:0}
+.fm-f>label{font-weight:600;font-size:13.5px}
+.fm-inp{position:relative;display:flex;align-items:center}
+.fm-inp>input[type=text]{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%;min-width:0}
+.fm-inp.has-unit>input[type=text]{padding-right:62px;text-align:right}
+.fm-inp.has-cal>input[type=text]{padding-right:40px}
+.fm-unit{position:absolute;right:11px;color:var(--muted);font-style:normal;font-size:13px;pointer-events:none}
+.fm-cal{position:absolute;right:4px;border:0;background:transparent;font-size:17px;line-height:1;padding:4px 6px;cursor:pointer}
+.fm-inp>input.fm-datehid{position:absolute;right:6px;bottom:0;width:1px;height:1px;min-width:0;padding:0;border:0;opacity:0;pointer-events:none}
+.fm-hint{font-size:12.5px;color:var(--muted);min-height:16px;line-height:1.35}
+.fm-ok{color:var(--ok)}.fm-err{color:#b3382c}
+.fm-inp>input[aria-invalid="true"]{border-color:#b3382c}
+.fm-name{margin-left:6px;font-size:13.5px}
+.fm-name .btn{margin-left:8px}
+.fm-rowc{white-space:nowrap}
+.fm-x{border:0;background:transparent;color:#b3382c;cursor:pointer;font-size:14px;padding:2px 6px;border-radius:6px}
+.fm-x:hover{background:#fbe3df}
+.fm-btns{display:flex;flex-wrap:wrap;gap:8px}

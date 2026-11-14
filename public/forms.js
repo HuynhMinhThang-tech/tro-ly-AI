@@ -22,7 +22,7 @@ var Forms = (function () {
   function busy(btn, on, text) { if (!btn) return; if (on) { btn.dataset.t = btn.textContent; btn.textContent = text || "Đang xử lý…"; btn.disabled = true; } else { btn.textContent = btn.dataset.t || btn.textContent; btn.disabled = false; } }
 
   /* ================= NGƯỜI DÙNG ================= */
-  var U = { tpls: [], cur: null, mode: "file", headers: null, raw: null, mapping: {}, checked: null, pdf: false, maxRows: 50, maxPdf: 10 };
+  var U = { tpls: [], cur: null, mode: "file", headers: null, raw: null, mapping: {}, checked: null, fileName: "", hand: {}, touched: {}, pdf: false, maxRows: 50, maxPdf: 10 };
 
   async function loadUser() {
     try {
@@ -37,7 +37,7 @@ var Forms = (function () {
       return '<button class="item" data-id="' + h(t.id) + '" aria-current="' + (U.cur && U.cur.id === t.id) + '">' + h(t.name) + "</button>";
     }).join("") : '<p class="sub" style="font-size:13px">Chưa có biểu mẫu nào.</p>');
     $("fAside").querySelectorAll(".item").forEach(function (b) {
-      b.onclick = function () { U.cur = U.tpls.find(function (t) { return t.id === b.dataset.id; }); U.headers = U.raw = U.checked = null; U.mapping = {}; renderAside(); renderMain(); };
+      b.onclick = function () { U.cur = U.tpls.find(function (t) { return t.id === b.dataset.id; }); U.headers = U.raw = U.checked = null; U.mapping = {}; U.fileName = ""; U.hand = {}; U.touched = {}; renderAside(); renderMain(); };
     });
   }
   function renderMain() {
@@ -49,13 +49,23 @@ var Forms = (function () {
     U.mode === "file" ? renderFile() : renderHand();
   }
 
+  /* Hiển thị kèm đơn vị (chỉ trên giao diện; trong văn bản xuất ra theo đúng mẫu) */
+  function uiShown(f, v) {
+    if (!v) return "";
+    return f.type === "percent" ? v + "%" : f.type === "money" ? v + " đ" : v;
+  }
+
   /* --- Từ Excel / CSV --- */
+  function resetFile(msg) {
+    U.headers = U.raw = U.checked = null; U.mapping = {}; U.fileName = ""; renderFile();
+    if (msg) toast(msg);
+  }
   function renderFile() {
     $("fmBody").innerHTML =
-      '<div class="card fm-step"><b>1. Tải tệp mẫu để điền</b><p class="sub">Mỗi dòng là một bộ hồ sơ. Cột có nền hồng là bắt buộc. Trang "Huong dan" trong tệp Excel giải thích từng cột.</p>' +
+      '<div class="card fm-step"><b>1. Tải tệp mẫu để điền</b><p class="sub">Mỗi dòng là một bộ hồ sơ. Cột có nền hồng là bắt buộc. Trong tệp Excel, ô tiền tự hiện dấu chấm ngăn nghìn, ô tỷ lệ hiện %, ô ngày hiện dd/mm/yyyy và có chặn nhập sai; trang "Huong dan" giải thích từng cột.</p>' +
       '<button class="btn" id="fmX">Tải mẫu Excel (.xlsx)</button> <button class="btn" id="fmC">Tải mẫu CSV</button></div>' +
       '<div class="card fm-step"><b>2. Tải dữ liệu đã điền lên</b><p class="sub">Nhận .xlsx hoặc .csv, tối đa ' + U.maxRows + ' dòng. Dữ liệu chỉ dùng để điền biểu mẫu, hệ thống không lưu lại.</p>' +
-      '<input type="file" id="fmFile" accept=".xlsx,.csv,.txt" hidden><button class="btn primary" id="fmPick">Chọn tệp Excel / CSV</button> <span id="fmName" class="sub"></span></div>' +
+      '<input type="file" id="fmFile" accept=".xlsx,.csv,.txt" hidden><button class="btn primary" id="fmPick">Chọn tệp Excel / CSV</button> <span id="fmName" class="fm-name"></span></div>' +
       '<div id="fmMap"></div><div id="fmPrev"></div>';
     $("fmX").onclick = function () { download("/api/templates/" + U.cur.id + "/sample?format=xlsx", {}, "du-lieu-mau.xlsx").catch(function (e) { toast(e.message); }); };
     $("fmC").onclick = function () { download("/api/templates/" + U.cur.id + "/sample?format=csv", {}, "du-lieu-mau.csv").catch(function (e) { toast(e.message); }); };
@@ -65,11 +75,15 @@ var Forms = (function () {
       var fd = new FormData(); fd.append("file", f); $("fmName").textContent = "Đang đọc " + f.name + "…";
       try {
         var d = await api("/api/templates/" + U.cur.id + "/parse", "POST", fd);
-        U.headers = d.headers; U.raw = d.rows; U.mapping = d.mapping; $("fmName").textContent = f.name + " · " + d.rows.length + " dòng";
-        renderMap(); recheck();
-      } catch (e) { $("fmName").textContent = ""; toast(e.message); }
+        U.headers = d.headers; U.raw = d.rows; U.mapping = d.mapping; U.fileName = f.name;
+        showLoaded(); renderMap(); recheck();
+      } catch (e) { $("fmName").textContent = U.headers ? U.fileName + " · " + U.raw.length + " dòng" : ""; toast(e.message); }
     };
-    if (U.headers) { $("fmName").textContent = "Đã đọc " + U.raw.length + " dòng"; renderMap(); recheck(); }
+    if (U.headers) { showLoaded(); renderMap(); recheck(); }
+  }
+  function showLoaded() {
+    $("fmName").innerHTML = "<b>" + h(U.fileName) + "</b> · " + U.raw.length + ' dòng <button class="btn sm danger" id="fmReset" type="button">Hủy, xóa dữ liệu đã tải</button>';
+    $("fmReset").onclick = function () { resetFile("Đã xóa dữ liệu đã tải."); };
   }
   function fieldOpts(sel) {
     return opt("", "— bỏ qua cột này —", !sel) + U.cur.fields.map(function (f) { return opt(f.key, f.label, sel === f.key); }).join("");
@@ -113,47 +127,135 @@ var Forms = (function () {
     var my = ++seq;
     try {
       var d = await api("/api/templates/" + U.cur.id + "/check", "POST", { rows: rowObjs() });
-      if (my !== seq) return; U.checked = d.rows; renderPrev();
+      if (my !== seq || !U.raw) return; U.checked = d.rows; renderPrev();
     } catch (e) { toast(e.message); }
   }
+  function dropRows(idx) {   // bỏ các dòng (chỉ số theo thứ tự hiện tại) khỏi dữ liệu đã tải
+    var set = {}; idx.forEach(function (i) { set[i] = 1; });
+    U.raw = U.raw.filter(function (_, i) { return !set[i]; });
+    if (!U.raw.length) return resetFile("Đã bỏ hết các dòng, hãy tải tệp khác.");
+    showLoaded(); renderMap(); recheck();
+  }
   function renderPrev() {
-    var F = U.cur.fields, rows = U.checked, okN = rows.filter(function (r) { return !Object.keys(r.issues).length; }).length;
-    $("fmPrev").innerHTML = '<div class="card fm-step"><b>4. Kiểm tra dữ liệu và tạo văn bản</b><p class="sub">' + okN + "/" + rows.length + ' dòng hợp lệ. Dòng có lỗi (chữ đỏ) cần sửa trong tệp rồi tải lại.</p>' +
+    var F = U.cur.fields, rows = U.checked, okN = rows.filter(function (r) { return !Object.keys(r.issues).length; }).length, badN = rows.length - okN;
+    $("fmPrev").innerHTML = '<div class="card fm-step"><b>4. Kiểm tra dữ liệu và tạo văn bản</b><p class="sub">' + okN + "/" + rows.length + " dòng hợp lệ." +
+      (badN ? " Dòng có lỗi (chữ đỏ) không tạo được: hãy sửa trong tệp rồi tải lại, hoặc bỏ dòng đó (nút ✕)." : "") + "</p>" +
+      (badN ? '<p><button class="btn sm danger" id="fmDropBad" type="button">Bỏ ' + badN + " dòng còn lỗi</button></p>" : "") +
       '<div class="scroll"><table class="fm-prev"><thead><tr><th></th>' + F.map(function (f) { return "<th>" + h(f.label) + (f.required ? " *" : "") + "</th>"; }).join("") + "</tr></thead><tbody>" +
       rows.map(function (r, i) {
         var ok = !Object.keys(r.issues).length;
-        return '<tr><td><input type="checkbox" class="fm-sel" data-i="' + i + '"' + (ok ? " checked" : " disabled") + ' aria-label="Chọn dòng ' + (i + 1) + '"></td>' + F.map(function (f) {
-          return r.issues[f.key] ? '<td class="fm-bad" title="' + h(r.issues[f.key]) + '">⚠ ' + h(r.issues[f.key]) + "</td>" : "<td>" + h(r.shown[f.key] || "") + "</td>";
+        return '<tr><td class="fm-rowc"><input type="checkbox" class="fm-sel" data-i="' + i + '"' + (ok ? " checked" : " disabled") + ' aria-label="Chọn dòng ' + (i + 1) + '"> <button type="button" class="fm-x" data-del="' + i + '" title="Bỏ dòng này" aria-label="Bỏ dòng ' + (i + 1) + '">✕</button></td>' + F.map(function (f) {
+          return r.issues[f.key] ? '<td class="fm-bad" title="' + h(r.issues[f.key]) + '">⚠ ' + h(r.issues[f.key]) + "</td>" : "<td>" + h(uiShown(f, r.shown[f.key])) + "</td>";
         }).join("") + "</tr>";
-      }).join("") + "</tbody></table></div>" + genControls() + "</div>";
+      }).join("") + "</tbody></table></div>" + genControls("file") + "</div>";
+    $("fmPrev").querySelectorAll("[data-del]").forEach(function (b) { b.onclick = function () { dropRows([+b.dataset.del]); }; });
+    if ($("fmDropBad")) $("fmDropBad").onclick = function () {
+      var bad = []; U.checked.forEach(function (r, i) { if (Object.keys(r.issues).length) bad.push(i); }); dropRows(bad);
+    };
+    $("fmCancel").onclick = function () { resetFile("Đã hủy, dữ liệu đã tải được xóa."); };
     bindGen(function () { return Array.prototype.map.call($("fmPrev").querySelectorAll(".fm-sel:checked"), function (c) { return rowObjs()[+c.dataset.i]; }); });
   }
 
-  /* --- Nhập tay --- */
+  /* --- Nhập tay: ô nhập tự định dạng và ràng buộc theo kiểu dữ liệu --- */
+  var PH = { money: "VD: 25.000.000.000", percent: "VD: 100", number: "VD: 5", date: "dd/mm/yyyy, VD: 15/11/2026", tax_code: "10 hoặc 13 chữ số", id_card: "12 chữ số (CMND cũ 9 số)" };
+  var IM = { money: "numeric", number: "decimal", percent: "decimal", date: "numeric", tax_code: "numeric", id_card: "numeric" };
+  var UNIT = { money: "đồng", percent: "%" };
+  function setCaret(el, out, before) {   // giữ con trỏ đúng chỗ sau khi thêm/bớt dấu chấm
+    var n = 0, i = 0; while (i < out.length && n < before) { if (/\d/.test(out[i])) n++; i++; }
+    try { el.setSelectionRange(i, i); } catch (e) { /* ô không hỗ trợ */ }
+  }
+  var group = function (d) { return d.replace(/\B(?=(\d{3})+(?!\d))/g, "."); };
+  function mask(el) {
+    var t = el.dataset.t, v = el.value, pos = el.selectionStart == null ? v.length : el.selectionStart;
+    var before = v.slice(0, pos).replace(/\D/g, "").length, out;
+    if (t === "money") { out = group(v.replace(/\D/g, "").replace(/^0+(?=\d)/, "").slice(0, 15)); }
+    else if (t === "number" || t === "percent") {
+      var dec = t === "percent" ? /[.,]/ : /,/, parts = v.replace(t === "percent" ? /[^\d.,]/g : /[^\d,]/g, "").split(dec);
+      var ip = parts[0].replace(/^0+(?=\d)/, "").slice(0, t === "percent" ? 3 : 15), fp = parts.length > 1 ? parts.slice(1).join("").slice(0, t === "percent" ? 2 : 4) : null;
+      out = (t === "number" ? group(ip) : ip) + (fp !== null ? "," + fp : "");
+      if (t === "percent" && parseFloat(out.replace(",", ".")) > 100) out = el._ok || "";
+    } else if (t === "tax_code") out = v.replace(/\D/g, "").slice(0, 13);
+    else if (t === "id_card") out = v.replace(/\D/g, "").slice(0, 12);
+    else if (t === "date") {
+      var c = v.replace(/[^\d\/.\-]/g, "");
+      if (/^\d*$/.test(c)) { var d = c.slice(0, 8); c = d.length > 4 ? d.slice(0, 2) + "/" + d.slice(2, 4) + "/" + d.slice(4) : d.length > 2 ? d.slice(0, 2) + "/" + d.slice(2) : d; }
+      else c = c.slice(0, 10);
+      el.value = c; el._ok = c; return;
+    } else return;
+    el.value = out; el._ok = out; setCaret(el, out, before);
+  }
+  function normDate(v) {
+    var m = v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/), i = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) return ("0" + m[1]).slice(-2) + "/" + ("0" + m[2]).slice(-2) + "/" + m[3];
+    return i ? i[3] + "/" + i[2] + "/" + i[1] : v;
+  }
+  function handField(f) {
+    var id = "hf_" + f.key, unit = UNIT[f.type] || "", isDate = f.type === "date";
+    return '<div class="fm-f"><label for="' + id + '">' + h(f.label) + (f.required ? " *" : "") + '</label><div class="fm-inp' + (unit ? " has-unit" : "") + (isDate ? " has-cal" : "") + '">' +
+      '<input id="' + id + '" data-k="' + h(f.key) + '" data-t="' + f.type + '" type="text" autocomplete="off" inputmode="' + (IM[f.type] || "text") + '" placeholder="' + h(PH[f.type] || "") + '" value="' + h(U.hand[f.key] || "") + '">' +
+      (unit ? '<em class="fm-unit">' + unit + "</em>" : "") +
+      (isDate ? '<button type="button" class="fm-cal" data-cal="' + h(f.key) + '" aria-label="Chọn ngày từ lịch">&#128197;</button><input type="date" class="fm-datehid" tabindex="-1" aria-hidden="true" data-calin="' + h(f.key) + '">' : "") +
+      '</div><small class="fm-hint" data-h="' + h(f.key) + '"></small></div>';
+  }
+  function handValues() { var o = {}; $("fmBody").querySelectorAll("[data-k]").forEach(function (i) { o[i.dataset.k] = i.value; }); return o; }
+  var hintTimer = null;
+  async function refreshHints(all) {   // hỏi máy chủ cùng bộ quy tắc kiểm tra như lúc xuất file, để thông báo luôn khớp
+    var d = await api("/api/templates/" + U.cur.id + "/check", "POST", { rows: [handValues()] }), r = d.rows[0], bad = 0, first = null;
+    U.cur.fields.forEach(function (f) {
+      var el = $("hf_" + f.key), box = $("fmBody").querySelector('[data-h="' + f.key + '"]'); if (!el || !box) return;
+      var iss = r.issues[f.key], has = el.value.trim() !== "";
+      if (iss && (all || U.touched[f.key])) { box.className = "fm-hint fm-err"; box.textContent = "⚠ " + iss; el.setAttribute("aria-invalid", "true"); bad++; first = first || el; }
+      else if (!iss && has) { box.className = "fm-hint fm-ok"; box.textContent = "→ Trong văn bản: " + uiShown(f, r.shown[f.key]) + (r.words[f.key] ? " (" + r.words[f.key] + ")" : ""); el.removeAttribute("aria-invalid"); }
+      else { box.className = "fm-hint"; box.textContent = ""; el.removeAttribute("aria-invalid"); if (iss && all) bad++; }
+    });
+    if (all && first) first.focus();
+    return bad;
+  }
   function renderHand() {
-    var F = U.cur.fields;
-    $("fmBody").innerHTML = '<div class="card fm-step"><div class="fm-grid">' + F.map(function (f) {
-      var t = f.type === "date" ? "date" : "text", ph = { money: "VD: 25.000.000.000", percent: "VD: 100", tax_code: "10 hoặc 13 chữ số", id_card: "12 chữ số" }[f.type] || "";
-      return '<label>' + h(f.label) + (f.required ? " *" : "") + '<input data-k="' + h(f.key) + '" type="' + t + '" placeholder="' + h(ph) + '" value="' + h(f.type === "date" ? "" : "") + '"></label>';
-    }).join("") + "</div>" + genControls(true) + "</div>";
-    bindGen(function () { var o = {}; $("fmBody").querySelectorAll("[data-k]").forEach(function (i) { o[i.dataset.k] = i.value; }); return [o]; });
+    var F = U.cur.fields; U.hand = U.hand || {}; U.touched = {};
+    $("fmBody").innerHTML = '<div class="card fm-step"><div class="fm-grid">' + F.map(handField).join("") + "</div>" + genControls("hand") + "</div>";
+    $("fmBody").querySelectorAll("[data-k]").forEach(function (el) {
+      el._ok = el.value;
+      el.addEventListener("input", function () { mask(el); U.hand[el.dataset.k] = el.value; clearTimeout(hintTimer); hintTimer = setTimeout(function () { refreshHints(false).catch(function () { }); }, 350); });
+      el.addEventListener("blur", function () {
+        if (el.dataset.t === "date") el.value = normDate(el.value);
+        U.hand[el.dataset.k] = el.value; U.touched[el.dataset.k] = true; refreshHints(false).catch(function () { });
+      });
+    });
+    $("fmBody").querySelectorAll("[data-cal]").forEach(function (b) {
+      var inp = $("fmBody").querySelector('[data-calin="' + b.dataset.cal + '"]'), txt = $("hf_" + b.dataset.cal);
+      b.onclick = function () { try { inp.showPicker(); } catch (e) { inp.click(); } };
+      inp.onchange = function () { if (!inp.value) return; txt.value = normDate(inp.value); U.hand[txt.dataset.k] = txt.value; U.touched[txt.dataset.k] = true; refreshHints(false).catch(function () { }); };
+    });
+    $("fmClear").onclick = function () { U.hand = {}; U.touched = {}; renderHand(); toast("Đã xóa nội dung đã nhập."); };
+    if (Object.keys(U.hand).length) refreshHints(false).catch(function () { });
+    bindGen(async function () {
+      F.forEach(function (f) { U.touched[f.key] = true; });
+      var bad = await refreshHints(true);
+      if (bad) { toast("Còn " + bad + " ô chưa hợp lệ, xem chữ đỏ bên dưới từng ô."); return null; }
+      return [handValues()];
+    });
   }
 
   /* --- Chung: chọn định dạng + nút tạo --- */
-  function genControls(single) {
+  function genControls(kind) {
     return '<div class="fm-gen"><div class="fm-fmt"><b>Xuất ra:</b> <label><input type="radio" name="fmt" value="docx" checked> Word (.docx)</label>' +
       '<label><input type="radio" name="fmt" value="pdf"' + (U.pdf ? "" : " disabled") + '> PDF</label><label><input type="radio" name="fmt" value="both"' + (U.pdf ? "" : " disabled") + '> Cả hai</label></div>' +
       (U.pdf ? "<small class=\"sub\">PDF tối đa " + U.maxPdf + " dòng mỗi lần.</small>" : '<small class="sub">Máy chủ chưa hỗ trợ xuất PDF: hãy tải Word rồi chọn "Lưu thành PDF" trong Word.</small>') +
-      '<div><button class="btn primary" id="fmGo">' + (single ? "Tạo văn bản" : "Tạo văn bản cho các dòng đã chọn") + "</button></div></div>";
+      '<div class="fm-btns"><button class="btn primary" id="fmGo" type="button">' + (kind === "hand" ? "Tạo văn bản" : "Tạo văn bản cho các dòng đã chọn") + "</button> " +
+      (kind === "hand" ? '<button class="btn" id="fmClear" type="button">Xóa nội dung đã nhập</button>' : '<button class="btn" id="fmCancel" type="button">Hủy, xóa dữ liệu đã tải</button>') + "</div></div>";
   }
   function bindGen(getRows) {
     $("fmGo").onclick = async function () {
-      var rows = getRows(), fmt = document.querySelector('input[name="fmt"]:checked').value;
-      if (!rows.length) return toast("Chưa có dòng nào để tạo.");
-      busy(this, true, "Đang tạo văn bản…");
+      var btn = this, fmt = document.querySelector('input[name="fmt"]:checked').value, rows;
+      busy(btn, true, "Đang kiểm tra…");
+      try { rows = await getRows(); } catch (e) { busy(btn, false); return toast(e.message); }
+      if (!rows) return busy(btn, false);
+      if (!rows.length) { busy(btn, false); return toast("Chưa có dòng nào để tạo."); }
+      btn.textContent = "Đang tạo văn bản…";
       try { await download("/api/templates/" + U.cur.id + "/generate", { method: "POST", json: { rows: rows, format: fmt } }, "bieu-mau"); toast("Đã tạo xong, tệp đang được tải về."); }
       catch (e) { toast(e.message); }
-      busy(this, false);
+      busy(btn, false);
     };
   }
 
