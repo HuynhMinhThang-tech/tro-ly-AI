@@ -38,6 +38,16 @@ Nếu không tạo được vector cho câu hỏi (Voyage bận, lỗi hoặc ch
 
 **Dùng lại vector:** mỗi đoạn có `content_hash` (SHA-256 của tiêu đề + nội dung). Khi tải lên tài liệu có đoạn y hệt đoạn đã lập chỉ mục (ví dụ bản sửa đổi của một văn bản), vector được chép lại, không tốn lượt Voyage. Báo cáo quét tệp cho biết số đoạn dùng lại và thời gian ước tính chỉ tính phần còn lại. Chỉ dùng lại vector của đúng model đang chạy (`chunks.embed_model`).
 
+## Giao diện
+Một **thanh bên trái** dùng chung cho mọi tài khoản. Bấm nút ☰ ở thanh trên để thu gọn thành dải biểu tượng hoặc mở rộng (máy tính nhớ lựa chọn của bạn; điện thoại là ngăn kéo, chạm nền mờ hoặc nhấn Esc để đóng):
+- **Trò chuyện** và **Biểu mẫu** có ở mọi tài khoản. Khi ở Trò chuyện, thanh bên hiện nút cuộc trò chuyện mới và danh sách gần đây; khi ở Biểu mẫu thì hiện danh sách biểu mẫu để chọn.
+- Tài khoản admin có thêm nút chuyển **Người dùng / Quản trị** ở đầu thanh bên. Ở chế độ Quản trị, nhóm **Quản trị** (Tài liệu, Người dùng, Thiết lập bot, Quản lý biểu mẫu, Mô hình AI) hiện ra bên dưới; Trò chuyện và Biểu mẫu vẫn dùng được ngay mà không phải đổi chế độ. Tài khoản thường không thấy nút chuyển lẫn nhóm Quản trị (máy chủ vẫn kiểm tra quyền ở từng API).
+
+## Giới hạn tần suất và thời gian chờ
+- Mỗi tài khoản hỏi tối đa **8 câu/phút**, **300 câu/ngày** và **2 câu đang xử lý cùng lúc** (đổi bằng `CHAT_PER_MINUTE`, `CHAT_PER_DAY`, `CHAT_PARALLEL`). Vượt thì báo lời nhắn rõ ràng kèm mã 429. Số đếm lấy từ bảng `messages` nên đúng cả khi chạy nhiều phiên bản; xóa cuộc trò chuyện thì các tin trong đó không còn được đếm.
+- Gọi Groq chờ tối đa 45 giây (`GROQ_TIMEOUT_MS`), gọi Voyage 30 giây (`VOYAGE_TIMEOUT_MS`): quá thì báo lỗi; riêng câu hỏi gặp lỗi Voyage vẫn được trả lời bằng tìm kiếm từ khóa.
+- `schema.sql` có thêm hai chỉ mục cho `messages` và `conversations` (tự tạo khi khởi động).
+
 ## Quản lý quyền admin
 Trang **Người dùng** có nút **Cấp quyền admin** / **Gỡ quyền admin** (bấm hai lần để xác nhận). Có hiệu lực ngay, không cần đăng nhập lại. Chốt an toàn: chỉ cấp được cho tài khoản **đã duyệt**; không tự gỡ quyền của chính mình; không gỡ được tài khoản gốc (`ADMIN_EMAIL`); luôn còn ít nhất một admin. Mỗi lần đổi quyền được ghi vào log máy chủ.
 
@@ -69,6 +79,12 @@ Nội dung điền vào mỗi vùng viết dạng `{{tên_trường}}` kèm bộ
 
 **Người dùng**: chọn biểu mẫu → tải tệp Excel/CSV mẫu → điền → tải lên → kiểm tra đối chiếu cột (AI chỉ gợi ý ghép cột, và chỉ nhận **tiêu đề cột**, không nhận dữ liệu) → xem lỗi từng ô → tạo văn bản (một dòng một tệp, nhiều dòng thành ZIP). Có nút **Hủy / xóa dữ liệu đã tải** và nút ✕ (hoặc "Bỏ các dòng còn lỗi") để loại dòng thiếu dữ liệu. Cũng có chế độ nhập tay.
 
+**Ngắt khoảng (chia biểu mẫu thành khối):** trong bước "2. Các trường dữ liệu và ngắt khoảng", mặc định có một đường kẻ ở đầu và một ở cuối danh sách trường (cả biểu mẫu là một khối). Bấm **＋ Ngắt khoảng ở đây** giữa hai trường để chia khối, đặt tên cho từng khối (VD "Thành viên 1", "Thành viên 2"); bấm **✕ Bỏ ngắt** để gộp lại. Các trường nằm giữa hai đường kẻ là một khối:
+- **Nhập tay:** mỗi khối là một nhóm riêng có tiêu đề, đánh số và viền màu, nên thuộc tính của người 1 không còn lẫn với người 2.
+- **Excel mẫu:** thêm hàng tên khối (gộp ô, mỗi khối một màu) phía trên hàng tiêu đề, kèm đường dọc đậm ở đầu mỗi khối; trang "Huong dan" có thêm cột "Thuộc khối". Khi đọc lại, hàng tên khối được bỏ đi và dùng để ghép cột: hai cột cùng tên "Chức vụ" của hai khối không bị lẫn, kể cả khi người dùng đổi thứ tự cột. CSV mẫu không có hàng tên khối (vẫn một hàng tiêu đề).
+- **Bảng kiểm tra dữ liệu** và ô chọn trường ở bước đối chiếu cột cũng nhóm theo khối.
+- Chưa ngắt khoảng thì mọi thứ giữ nguyên như trước. Cấu hình lưu ở `brk` (trường mở khối mới) và `section` (tên khối) trong `templates.config.fields`; không cần đổi database.
+
 **Định dạng và ràng buộc nhập:**
 - Nhập tay: ô tiền chỉ nhận chữ số và tự thêm dấu chấm ngăn nghìn (25.000.000.000, kèm "đồng" và dòng "bằng chữ" để đối chiếu); ô tỷ lệ có ký hiệu % và không cho vượt 100; ô ngày luôn là dd/mm/yyyy (tự thêm dấu `/`, có nút lịch, không phụ thuộc ngôn ngữ trình duyệt); mã số thuế và CCCD chỉ nhận chữ số đúng độ dài. Thông báo lỗi lấy từ cùng bộ quy tắc kiểm tra của máy chủ nên luôn khớp với lúc xuất file.
 - Tệp Excel mẫu: ô tiền định dạng `#,##0` (Excel hiện dấu chấm nghìn theo máy), ô tỷ lệ hiện %, ô ngày hiện dd/mm/yyyy, ô mã số thuế/CCCD là chữ (không mất số 0 đầu); có chặn nhập sai và hộp gợi ý khi chọn ô. Ví dụ trong CSV mẫu cũng hiện đúng dạng chuẩn.
@@ -76,11 +92,13 @@ Nội dung điền vào mỗi vùng viết dạng `{{tên_trường}}` kèm bộ
 
 **Vì sao không lệch định dạng:** chỉ chữ bên trong các thẻ `<w:t>` của đúng vùng được chọn bị đổi; mọi thứ khác (kiểu chữ, bảng, lề, đầu/chân trang, font...) chép nguyên từ tệp gốc (`lib/docx-template.js`). Số, chữ, ngày do code xác định, không dùng AI. Dữ liệu người dùng xử lý trong bộ nhớ rồi bỏ; chỉ ghi ai dùng mẫu nào và số dòng (`template_runs`).
 
-**Xuất PDF** cần LibreOffice trên máy chủ (hoặc một dịch vụ Gotenberg):
+**Xuất PDF** cần LibreOffice hoặc một dịch vụ Gotenberg:
+- App chạy trên **Vercel** (không cài được LibreOffice): chạy một dịch vụ Gotenberg riêng bằng `gotenberg/Dockerfile` rồi đặt `GOTENBERG_URL`, `GOTENBERG_USER`, `GOTENBERG_PASSWORD` trên Vercel. Hướng dẫn từng bước: [`gotenberg/README.md`](gotenberg/README.md).
 - Máy có LibreOffice: tự phát hiện lệnh `soffice` (hoặc đặt `SOFFICE_PATH`).
-- Máy chủ khác: đặt `GOTENBERG_URL=http://...` (Gotenberg là LibreOffice đóng gói sẵn).
-- Triển khai bằng Docker: dùng `Dockerfile` kèm theo (đã cài LibreOffice và font Liberation, tương thích Times New Roman).
-- Không có cả hai (ví dụ Vercel/Render bản Node thường): giao diện tự khóa lựa chọn PDF, vẫn xuất Word; người dùng mở Word và chọn "Lưu thành PDF".
+- Triển khai bằng Docker: dùng `Dockerfile` ở thư mục gốc (đã cài LibreOffice và font Liberation, tương thích Times New Roman).
+- Không có cách nào ở trên: giao diện tự khóa lựa chọn PDF, vẫn xuất Word; người dùng mở Word và chọn "Lưu thành PDF".
+- Trang quản trị → Biểu mẫu có hộp **Xuất PDF** chuyển thử một tệp thật và báo sẵn sàng hay lỗi gì (sai tài khoản, không kết nối được, quá thời gian…), kèm nút "Kiểm tra lại". Khi người dùng mở tab Biểu mẫu, app gọi nhẹ để đánh thức dịch vụ PDF đang "ngủ"; gặp lỗi 502/503/504 hoặc mất kết nối thì tự thử lại một lần.
+- Vercel giới hạn phản hồi của hàm ở 4,5 MB: kết quả lớn hơn `MAX_RESPONSE_MB` (mặc định 4 trên Vercel) sẽ báo lỗi rõ ràng thay vì lỗi mơ hồ.
 PDF do LibreOffice dựng nên ngắt dòng có thể lệch rất nhẹ so với Word nếu máy chủ thiếu font Times New Roman. Giới hạn: `MAX_FORM_ROWS` (50 dòng/lần), `MAX_PDF_ROWS` (10 dòng/lần).
 
 ## Cài đặt
@@ -104,6 +122,7 @@ Vào **Quản trị → Mô hình AI**: dán API key Groq → bấm **Kiểm tra
 - Model suy luận (có thẻ `<think>`) vẫn dùng được: phần suy luận được lược bỏ trước khi hiển thị.
 
 ## Lưu ý
+- Việc lập chỉ mục chạy nền nằm trong tiến trình của máy chủ. Trên Vercel/serverless, tiến trình có thể bị dừng khi phản hồi đã gửi xong, nên một tài liệu có thể kẹt ở "đang lập chỉ mục" (chưa kiểm chứng trên Vercel; nếu gặp thì tải lại tệp). Muốn chạy bền vững, dùng máy chủ chạy liên tục (Docker, Render).
 - Tên, cách xưng hô, giọng điệu, lời chào, câu gợi ý: **Quản trị → Thiết lập bot**.
 - Văn bản mới thay văn bản cũ: tải bản mới lên, rồi bấm **Tắt hiệu lực** ở bản cũ.
 - Tệp lớn mất nhiều thời gian lập chỉ mục vì xử lý trong một yêu cầu. Giữ `MAX_CHUNKS` ở mức vừa phải.
@@ -111,7 +130,7 @@ Vào **Quản trị → Mô hình AI**: dán API key Groq → bấm **Kiểm tra
 - Bot là công cụ hỗ trợ tra cứu, không thay thế ý kiến pháp lý chính thức.
 
 ## Kiểm thử
-`npm test` chạy 24 bài kiểm tra không cần database hay API key (chuyển Markdown, tách đoạn, bộ giữ nhịp embedding), dùng tệp mẫu trong `test/fixtures/`.
+`npm test` chạy 51 bài kiểm tra không cần database hay API key (chuyển Markdown, tách đoạn, bộ giữ nhịp embedding), dùng tệp mẫu trong `test/fixtures/`.
 
 Bài kiểm thử end-to-end (`test/e2e.test.js`: phân quyền admin, lập chỉ mục nền với Voyage giả **thật sự trả 429 nếu vượt hạn mức**, khởi động lại giữa chừng, lỗi và thử lại) chỉ chạy khi có database thử:
 ```
@@ -123,4 +142,4 @@ Tên database bắt buộc chứa chữ `test` vì bài kiểm tra **xóa sạch
 Khởi động lại là xong (chạy `npm install` trước vì có thêm thư viện): `schema.sql` tự thêm hàm `vn_fold`, các cột `chunks.content_hash`, `embed_model`, `tsv` (kèm chỉ mục) và hai bảng `templates`, `template_runs`; vector cũ được gán nhãn model đang cấu hình. Lần khởi động đầu có thể mất vài giây nếu kho đã nhiều đoạn. Trước đó `schema.sql` đã tự thêm các cột `documents.markdown`, `status`, `error` (tài liệu cũ mặc định `ready`). Tài liệu đã lập chỉ mục trước đây vẫn tra cứu bình thường nhưng chưa có bản Markdown và nhãn trích dẫn chưa có đường dẫn Chương. Muốn có, tải lại tệp (tắt/xóa bản cũ). Lưu ý: số tự động đánh bằng chức năng đánh số của Word có thể không nằm trong chữ của tệp `.docx`, hãy kiểm tra ở bản Markdown xem trước.
 
 ## Chưa có
-OCR tự động, trả lời dạng streaming, 👍/👎, giới hạn số câu hỏi mỗi người, đặt lại mật khẩu, lập chỉ mục chạy nền.
+OCR tự động, trả lời dạng streaming, 👍/👎, đặt lại mật khẩu, đổi thứ tự trường biểu mẫu bằng kéo thả.

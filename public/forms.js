@@ -4,6 +4,20 @@ var Forms = (function () {
   "use strict";
   var TYPES = {};
   function h(s) { return esc(s == null ? "" : s); }
+  /* Chia trường thành các khối theo đường ngắt khoảng của admin (giống blocksOf ở máy chủ): trường có brk mở khối mới, trường đầu luôn mở khối đầu */
+  function warmPdf() {   // dịch vụ PDF có thể đang "ngủ": gọi nhẹ một lần (tối đa 4 phút/lần) để lúc bấm xuất PDF không phải chờ khởi động
+    if (!U.pdf || Date.now() - (U.warmAt || 0) < 240000) return;
+    U.warmAt = Date.now(); api("/api/pdf/warmup").catch(function () { });
+  }
+  function blocksOf(fields) {
+    var out = [];
+    (fields || []).forEach(function (f) {
+      if (!out.length || f.brk) out.push({ title: String(f.section || "").trim(), fields: [] });
+      out[out.length - 1].fields.push(f);
+    });
+    if (out.length > 1) out.forEach(function (b, i) { if (!b.title) b.title = "Phần " + (i + 1); });
+    return out;
+  }
   function opt(v, label, sel) { return '<option value="' + h(v) + '"' + (sel ? " selected" : "") + ">" + h(label) + "</option>"; }
 
   /* Tải tệp về máy (gọi API có kèm đăng nhập) */
@@ -22,22 +36,22 @@ var Forms = (function () {
   function busy(btn, on, text) { if (!btn) return; if (on) { btn.dataset.t = btn.textContent; btn.textContent = text || "Đang xử lý…"; btn.disabled = true; } else { btn.textContent = btn.dataset.t || btn.textContent; btn.disabled = false; } }
 
   /* ================= NGƯỜI DÙNG ================= */
-  var U = { tpls: [], cur: null, mode: "file", headers: null, raw: null, mapping: {}, checked: null, fileName: "", hand: {}, touched: {}, pdf: false, maxRows: 50, maxPdf: 10 };
+  var U = { tpls: [], cur: null, mode: "file", headers: null, bands: null, raw: null, mapping: {}, checked: null, fileName: "", hand: {}, touched: {}, pdf: false, maxRows: 50, maxPdf: 10 };
 
   async function loadUser() {
     try {
-      var d = await api("/api/templates"); U.tpls = d.templates; U.pdf = d.pdf; U.maxRows = d.max_rows; U.maxPdf = d.max_pdf_rows; TYPES = d.types || TYPES;
+      var d = await api("/api/templates"); U.tpls = d.templates; U.pdf = d.pdf; warmPdf(); U.maxRows = d.max_rows; U.maxPdf = d.max_pdf_rows; TYPES = d.types || TYPES;
     } catch (e) { toast(e.message); return; }
     if (!U.cur || !U.tpls.some(function (t) { return t.id === U.cur.id; })) U.cur = U.tpls[0] || null;
     else U.cur = U.tpls.find(function (t) { return t.id === U.cur.id; });
     renderAside(); renderMain();
   }
   function renderAside() {
-    $("fAside").innerHTML = "<h4>Biểu mẫu</h4>" + (U.tpls.length ? U.tpls.map(function (t) {
+    $("fAside").innerHTML = "<h4>Chọn biểu mẫu</h4>" + (U.tpls.length ? U.tpls.map(function (t) {
       return '<button class="item" data-id="' + h(t.id) + '" aria-current="' + (U.cur && U.cur.id === t.id) + '">' + h(t.name) + "</button>";
     }).join("") : '<p class="sub" style="font-size:13px">Chưa có biểu mẫu nào.</p>');
     $("fAside").querySelectorAll(".item").forEach(function (b) {
-      b.onclick = function () { U.cur = U.tpls.find(function (t) { return t.id === b.dataset.id; }); U.headers = U.raw = U.checked = null; U.mapping = {}; U.fileName = ""; U.hand = {}; U.touched = {}; renderAside(); renderMain(); };
+      b.onclick = function () { U.cur = U.tpls.find(function (t) { return t.id === b.dataset.id; }); U.headers = U.raw = U.checked = U.bands = null; U.mapping = {}; U.fileName = ""; U.hand = {}; U.touched = {}; renderAside(); renderMain(); };
     });
   }
   function renderMain() {
@@ -57,12 +71,12 @@ var Forms = (function () {
 
   /* --- Từ Excel / CSV --- */
   function resetFile(msg) {
-    U.headers = U.raw = U.checked = null; U.mapping = {}; U.fileName = ""; renderFile();
+    U.headers = U.raw = U.checked = U.bands = null; U.mapping = {}; U.fileName = ""; renderFile();
     if (msg) toast(msg);
   }
   function renderFile() {
     $("fmBody").innerHTML =
-      '<div class="card fm-step"><b>1. Tải tệp mẫu để điền</b><p class="sub">Mỗi dòng là một bộ hồ sơ. Cột có nền hồng là bắt buộc. Trong tệp Excel, ô tiền tự hiện dấu chấm ngăn nghìn, ô tỷ lệ hiện %, ô ngày hiện dd/mm/yyyy và có chặn nhập sai; trang "Huong dan" giải thích từng cột.</p>' +
+      '<div class="card fm-step"><b>1. Tải tệp mẫu để điền</b><p class="sub">Mỗi dòng là một bộ hồ sơ. Cột có nền hồng là bắt buộc. Nếu biểu mẫu có nhiều khối (ví dụ từng người), hàng trên cùng của tệp ghi tên khối, đừng xóa hàng này. Trong tệp Excel, ô tiền tự hiện dấu chấm ngăn nghìn, ô tỷ lệ hiện %, ô ngày hiện dd/mm/yyyy và có chặn nhập sai; trang "Huong dan" giải thích từng cột.</p>' +
       '<button class="btn" id="fmX">Tải mẫu Excel (.xlsx)</button> <button class="btn" id="fmC">Tải mẫu CSV</button></div>' +
       '<div class="card fm-step"><b>2. Tải dữ liệu đã điền lên</b><p class="sub">Nhận .xlsx hoặc .csv, tối đa ' + U.maxRows + ' dòng. Dữ liệu chỉ dùng để điền biểu mẫu, hệ thống không lưu lại.</p>' +
       '<input type="file" id="fmFile" accept=".xlsx,.csv,.txt" hidden><button class="btn primary" id="fmPick">Chọn tệp Excel / CSV</button> <span id="fmName" class="fm-name"></span></div>' +
@@ -75,7 +89,7 @@ var Forms = (function () {
       var fd = new FormData(); fd.append("file", f); $("fmName").textContent = "Đang đọc " + f.name + "…";
       try {
         var d = await api("/api/templates/" + U.cur.id + "/parse", "POST", fd);
-        U.headers = d.headers; U.raw = d.rows; U.mapping = d.mapping; U.fileName = f.name;
+        U.headers = d.headers; U.bands = d.bands || null; U.raw = d.rows; U.mapping = d.mapping; U.fileName = f.name;
         showLoaded(); renderMap(); recheck();
       } catch (e) { $("fmName").textContent = U.headers ? U.fileName + " · " + U.raw.length + " dòng" : ""; toast(e.message); }
     };
@@ -86,7 +100,10 @@ var Forms = (function () {
     $("fmReset").onclick = function () { resetFile("Đã xóa dữ liệu đã tải."); };
   }
   function fieldOpts(sel) {
-    return opt("", "— bỏ qua cột này —", !sel) + U.cur.fields.map(function (f) { return opt(f.key, f.label, sel === f.key); }).join("");
+    var bl = blocksOf(U.cur.fields), one = function (f) { return opt(f.key, f.label, sel === f.key); };
+    return opt("", "— bỏ qua cột này —", !sel) + (bl.length > 1
+      ? bl.map(function (b) { return '<optgroup label="' + h(b.title) + '">' + b.fields.map(one).join("") + "</optgroup>"; }).join("")
+      : U.cur.fields.map(one).join(""));
   }
   function renderMap() {
     var used = {}, missing = [];
@@ -96,7 +113,7 @@ var Forms = (function () {
     $("fmMap").innerHTML = '<div class="card fm-step"><b>3. Đối chiếu cột</b><p class="sub">Hệ thống đã tự ghép cột trong tệp với trường của biểu mẫu. Kiểm tra lại, chọn lại nếu chưa đúng.</p>' +
       '<div class="scroll"><table><thead><tr><th>Cột trong tệp</th><th>Ví dụ</th><th>Điền vào trường</th></tr></thead><tbody>' +
       U.headers.map(function (hd, i) {
-        return "<tr><td>" + h(hd || "(trống)") + "</td><td><small>" + h((U.raw[0] || [])[i] || "") + '</small></td><td><select data-c="' + i + '">' + fieldOpts(U.mapping[i]) + "</select></td></tr>";
+        return "<tr><td>" + (U.bands && U.bands[i] ? '<small class="fm-bandtag">' + h(U.bands[i]) + "</small> " : "") + h(hd || "(trống)") + "</td><td><small>" + h((U.raw[0] || [])[i] || "") + '</small></td><td><select data-c="' + i + '">' + fieldOpts(U.mapping[i]) + "</select></td></tr>";
       }).join("") + "</tbody></table></div>" +
       (missing.length ? '<p class="fm-bad">Chưa có cột cho trường bắt buộc: ' + h(missing.join(", ")) + "</p>" : "") +
       (unmapped && missing.length ? '<button class="btn sm" id="fmAI">Gợi ý ghép cột bằng AI</button> <small class="sub">Chỉ gửi tiêu đề cột cho AI, không gửi dữ liệu.</small>' : "") + "</div>";
@@ -136,16 +153,22 @@ var Forms = (function () {
     if (!U.raw.length) return resetFile("Đã bỏ hết các dòng, hãy tải tệp khác.");
     showLoaded(); renderMap(); recheck();
   }
+  function startsBlock(F, i) { return i > 0 && !!F[i].brk; }
+  function bandHead(F) {   // hàng tên khối phía trên tiêu đề cột (chỉ khi biểu mẫu có từ 2 khối)
+    var bl = blocksOf(F); if (bl.length < 2) return "";
+    return '<tr class="fm-band"><th></th>' + bl.map(function (b, i) { return '<th colspan="' + b.fields.length + '" class="fm-bandc fm-b' + (i % 4) + (i ? " fm-bstart" : "") + '">' + h(b.title) + "</th>"; }).join("") + "</tr>";
+  }
   function renderPrev() {
     var F = U.cur.fields, rows = U.checked, okN = rows.filter(function (r) { return !Object.keys(r.issues).length; }).length, badN = rows.length - okN;
     $("fmPrev").innerHTML = '<div class="card fm-step"><b>4. Kiểm tra dữ liệu và tạo văn bản</b><p class="sub">' + okN + "/" + rows.length + " dòng hợp lệ." +
       (badN ? " Dòng có lỗi (chữ đỏ) không tạo được: hãy sửa trong tệp rồi tải lại, hoặc bỏ dòng đó (nút ✕)." : "") + "</p>" +
       (badN ? '<p><button class="btn sm danger" id="fmDropBad" type="button">Bỏ ' + badN + " dòng còn lỗi</button></p>" : "") +
-      '<div class="scroll"><table class="fm-prev"><thead><tr><th></th>' + F.map(function (f) { return "<th>" + h(f.label) + (f.required ? " *" : "") + "</th>"; }).join("") + "</tr></thead><tbody>" +
+      '<div class="scroll"><table class="fm-prev"><thead>' + bandHead(F) + '<tr><th></th>' + F.map(function (f, i) { return '<th' + (startsBlock(F, i) ? ' class="fm-bstart"' : "") + ">" + h(f.label) + (f.required ? " *" : "") + "</th>"; }).join("") + "</tr></thead><tbody>" +
       rows.map(function (r, i) {
         var ok = !Object.keys(r.issues).length;
         return '<tr><td class="fm-rowc"><input type="checkbox" class="fm-sel" data-i="' + i + '"' + (ok ? " checked" : " disabled") + ' aria-label="Chọn dòng ' + (i + 1) + '"> <button type="button" class="fm-x" data-del="' + i + '" title="Bỏ dòng này" aria-label="Bỏ dòng ' + (i + 1) + '">✕</button></td>' + F.map(function (f) {
-          return r.issues[f.key] ? '<td class="fm-bad" title="' + h(r.issues[f.key]) + '">⚠ ' + h(r.issues[f.key]) + "</td>" : "<td>" + h(uiShown(f, r.shown[f.key])) + "</td>";
+          var st = startsBlock(F, F.indexOf(f)) ? " fm-bstart" : "";
+          return r.issues[f.key] ? '<td class="fm-bad' + st + '" title="' + h(r.issues[f.key]) + '">⚠ ' + h(r.issues[f.key]) + "</td>" : '<td class="' + st.trim() + '">' + h(uiShown(f, r.shown[f.key])) + "</td>";
         }).join("") + "</tr>";
       }).join("") + "</tbody></table></div>" + genControls("file") + "</div>";
     $("fmPrev").querySelectorAll("[data-del]").forEach(function (b) { b.onclick = function () { dropRows([+b.dataset.del]); }; });
@@ -213,7 +236,10 @@ var Forms = (function () {
   }
   function renderHand() {
     var F = U.cur.fields; U.hand = U.hand || {}; U.touched = {};
-    $("fmBody").innerHTML = '<div class="card fm-step"><div class="fm-grid">' + F.map(handField).join("") + "</div>" + genControls("hand") + "</div>";
+    var bl = blocksOf(F), body = bl.length > 1
+      ? bl.map(function (b, i) { return '<section class="fm-block fm-b' + (i % 4) + '"><h3 class="fm-bt"><span>' + (i + 1) + "</span>" + h(b.title) + '</h3><div class="fm-grid">' + b.fields.map(handField).join("") + "</div></section>"; }).join("")
+      : '<div class="fm-grid">' + F.map(handField).join("") + "</div>";
+    $("fmBody").innerHTML = '<div class="card fm-step">' + body + genControls("hand") + "</div>";
     $("fmBody").querySelectorAll("[data-k]").forEach(function (el) {
       el._ok = el.value;
       el.addEventListener("input", function () { mask(el); U.hand[el.dataset.k] = el.value; clearTimeout(hintTimer); hintTimer = setTimeout(function () { refreshHints(false).catch(function () { }); }, 350); });
@@ -268,19 +294,37 @@ var Forms = (function () {
     try {
       var d = await api("/api/admin/templates"); A.pdf = d.pdf; TYPES = d.types || TYPES; A.list = d.templates;
     } catch (e) { root.innerHTML = '<p class="fm-bad">' + h(e.message) + "</p>"; return; }
-    ed = null; renderList();
+    ed = null; renderList(); checkPdf();
+  }
+  /* Hộp "Xuất PDF": thử chuyển thật một tệp nhỏ ở máy chủ rồi báo sẵn sàng hay lỗi gì (kể cả sai tài khoản dịch vụ PDF) */
+  async function checkPdf() {
+    var el = $("pdfStat"); if (!el) return;
+    el.innerHTML = '<b>Xuất PDF:</b> <span class="sub">đang kiểm tra… (nếu dịch vụ đang ngủ, lần đầu có thể mất vài chục giây)</span>';
+    var html;
+    try {
+      var st = await api("/api/admin/pdf/status"); A.pdf = !!st.ok;
+      html = st.ok
+        ? '<b>Xuất PDF:</b> <span class="tag t-ok">Sẵn sàng</span> <small class="sub">' + (st.mode === "gotenberg" ? "Dịch vụ Gotenberg" : "LibreOffice trên máy chủ") + ", tạo thử mất " + (st.ms / 1000).toFixed(1) + " giây</small>"
+        : '<b>Xuất PDF:</b> <span class="tag">Chưa dùng được</span> <small class="fm-bad">' + h(st.message || "Không rõ lỗi") + (st.detail ? " (" + h(st.detail) + ")" : "") + '</small> <small class="sub">Người dùng vẫn tải được bản Word. Xem gotenberg/README.md.</small>';
+    } catch (e) { html = '<b>Xuất PDF:</b> <small class="fm-bad">' + h(e.message) + "</small>"; }
+    A.pdfBox = html + ' <button class="btn sm" id="pdfRe">Kiểm tra lại</button>'; paintPdf();
+  }
+  function paintPdf() {   // vẽ lại hộp từ kết quả đã có (danh sách biểu mẫu vẽ lại sau khi bật/tắt, xóa… không cần gọi lại máy chủ)
+    var el = $("pdfStat"); if (!el || !A.pdfBox) return;
+    el.innerHTML = A.pdfBox; $("pdfRe").onclick = checkPdf;
   }
   function renderList() {
     var root = $("adminForms");
     root.innerHTML = '<h2>Biểu mẫu</h2><p class="sub">Tải lên biểu mẫu Word (.docx) đã tô màu (highlight) các chỗ cần thay. Hệ thống nhận diện các chỗ đó, bạn đặt tên trường, người dùng chỉ cần tải Excel/CSV lên để điền tự động. Định dạng Word được giữ nguyên.</p>' +
       '<div class="drop"><p><b>Thêm biểu mẫu mới</b><br><small>Dùng Word: tô màu vàng đúng những chỗ cần thay (họ tên, số vốn, ngày tháng…), lưu thành .docx rồi tải lên.</small></p>' +
       '<input id="tFile" type="file" accept=".docx" hidden><button class="btn primary" id="tPick">Chọn tệp Word (.docx)</button></div>' +
-      (A.pdf ? "" : '<p class="sub" style="color:var(--warn)">Máy chủ chưa có LibreOffice/Gotenberg nên chưa xuất được PDF (vẫn xuất được Word). Xem README mục "Xuất PDF".</p>') +
+      '<div class="card fm-pdfstat" id="pdfStat"></div>' +
       '<div class="card"><div class="scroll"><table><thead><tr><th>Biểu mẫu</th><th>Tệp</th><th>Trường</th><th>Vùng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>' +
       (A.list.length ? A.list.map(function (t) {
         return "<tr><td>" + h(t.name) + "</td><td><span class=\"fname\">" + h(t.filename) + "</span></td><td>" + t.field_count + "</td><td>" + t.slot_count + "</td><td>" +
           (t.active ? '<span class="tag t-ok">Đang dùng</span>' : '<span class="tag">Đã tắt</span>') + '</td><td class="acts"><button class="btn sm" data-a="edit" data-id="' + h(t.id) + '">Sửa</button> <button class="btn sm" data-a="tog" data-id="' + h(t.id) + '">' + (t.active ? "Tắt" : "Bật") + '</button> <button class="btn sm danger" data-a="del" data-id="' + h(t.id) + '">Xóa</button></td></tr>';
       }).join("") : '<tr><td colspan="6"><div class="empty"><b>Chưa có biểu mẫu</b>Tải một tệp Word lên để bắt đầu.</div></td></tr>') + "</tbody></table></div></div>";
+    paintPdf();
     $("tPick").onclick = function () { $("tFile").click(); };
     $("tFile").onchange = async function () {
       var f = this.files[0]; this.value = ""; if (!f) return;
@@ -321,6 +365,20 @@ var Forms = (function () {
     var a = Math.max(0, s.start - 30), b = Math.min(t.length, s.end + 18);
     return (a ? "…" : "") + h(t.slice(a, s.start)) + "<mark>" + h(t.slice(s.start, s.end)) + "</mark>" + h(t.slice(s.end, b)) + (b < t.length ? "…" : "");
   }
+  /* Hàng đường kẻ ngắt khoảng nằm TRƯỚC trường i. i = 0: đường kẻ đầu biểu mẫu (luôn có, chỉ đặt được tên khối); i > 0: nếu chưa ngắt thì hiện nút thêm, đã ngắt thì hiện đường kẻ + tên khối + nút bỏ */
+  function brkRow(F, i) {
+    var f = F[i], bl = blocksOf(F), n = 0;
+    for (var k = 0; k <= i; k++) if (k === 0 || F[k].brk) n++;
+    if (i > 0 && !f.brk) return '<tr class="fm-brk"><td colspan="5"><button type="button" class="fm-brkadd" data-f="' + i + '">＋ Ngắt khoảng ở đây</button></td></tr>';
+    var multi = bl.length > 1 || (i > 0);
+    return '<tr class="fm-brk on"><td colspan="5"><div class="fm-brkline"><span class="fm-brknum">' + (i === 0 ? "Đầu biểu mẫu" : "Ngắt khoảng") + '</span>' +
+      '<input class="brkTitle" data-f="' + i + '" value="' + h(f.section || "") + '" placeholder="' + (multi ? "Tên khối " + n + " (VD: Thành viên " + n + ")" : "Tên khối đầu (chỉ hiện khi bạn ngắt khoảng bên dưới)") + '" aria-label="Tên khối ' + n + '">' +
+      (i > 0 ? '<button type="button" class="btn sm danger brkDel" data-f="' + i + '" aria-label="Bỏ đường ngắt này">✕ Bỏ ngắt</button>' : "") + "</div></td></tr>";
+  }
+  function blockSummary(F) {
+    var bl = blocksOf(F); if (bl.length < 2) return '<p class="sub fm-bsum">Hiện chưa ngắt khoảng nên biểu mẫu là một khối duy nhất (một lưới các ô nhập).</p>';
+    return '<p class="sub fm-bsum"><b>' + bl.length + " khối:</b> " + bl.map(function (b) { return h(b.title) + " (" + b.fields.length + " trường)"; }).join(" · ") + "</p>";
+  }
   function renderEditor() {
     syncFields();
     var root = $("adminForms"), c = ed.cfg;
@@ -334,13 +392,15 @@ var Forms = (function () {
         return '<tr><td><input type="checkbox" data-s="' + i + '" class="sOn"' + (s.enabled ? " checked" : "") + ' aria-label="Dùng vùng này"></td><td class="fm-snip">' + snippet(s) +
           '</td><td><input class="sFmt" data-s="' + i + '" value="' + h(s.format) + '"></td><td>' + (s.src === "manual" ? '<button class="btn sm danger sDel" data-s="' + i + '" aria-label="Xóa vùng">✕</button>' : '<small class="sub">' + (s.src === "auto" ? "tự thêm" : "tô màu") + "</small>") + "</td></tr>";
       }).join("") + "</tbody></table></div></div>" +
-      '<div class="card fm-step"><b>2. Các trường dữ liệu</b><p class="sub">Đây là các cột người dùng sẽ thấy trong tệp Excel mẫu. Đặt tên dễ hiểu, chọn đúng kiểu để hệ thống kiểm tra dữ liệu.</p>' +
-      '<div class="scroll"><table><thead><tr><th>Mã trường</th><th>Tên hiển thị (tiêu đề cột)</th><th>Kiểu</th><th>Bắt buộc</th><th>Ví dụ</th></tr></thead><tbody>' +
+      '<div class="card fm-step"><b>2. Các trường dữ liệu và ngắt khoảng</b><p class="sub">Đây là các cột người dùng sẽ thấy trong tệp Excel mẫu và trong form nhập tay. Đặt tên dễ hiểu, chọn đúng kiểu để hệ thống kiểm tra dữ liệu. ' +
+      'Muốn tách các trường thành từng khối (ví dụ thành viên 1, thành viên 2), bấm <b>＋ Ngắt khoảng</b> ở giữa hai trường: các trường nằm giữa hai đường kẻ là một khối, hiện thành một nhóm riêng khi nhập tay và thành một cụm cột có tên khối riêng trong Excel.</p>' +
+      '<div class="scroll"><table class="fm-ftab"><thead><tr><th>Mã trường</th><th>Tên hiển thị (tiêu đề cột)</th><th>Kiểu</th><th>Bắt buộc</th><th>Ví dụ</th></tr></thead><tbody>' +
+      brkRow(c.fields, 0) +
       c.fields.map(function (f, i) {
-        return "<tr><td><code>" + h(f.key) + '</code></td><td><input class="fLab" data-f="' + i + '" value="' + h(f.label) + '"></td><td><select class="fTyp" data-f="' + i + '">' +
+        return (i ? brkRow(c.fields, i) : "") + "<tr><td><code>" + h(f.key) + '</code></td><td><input class="fLab" data-f="' + i + '" value="' + h(f.label) + '"></td><td><select class="fTyp" data-f="' + i + '">' +
           TYPE_LIST.map(function (t) { return opt(t, TYPES[t] || t, f.type === t); }).join("") + '</select></td><td><input type="checkbox" class="fReq" data-f="' + i + '"' + (f.required ? " checked" : "") +
           '></td><td><input class="fEx" data-f="' + i + '" value="' + h(f.example) + '"></td></tr>';
-      }).join("") + "</tbody></table></div></div>" +
+      }).join("") + (c.fields.length ? '<tr class="fm-brk end"><td colspan="5"><div class="fm-brkline"><span>Hết biểu mẫu</span></div></td></tr>' : "") + "</tbody></table></div>" + blockSummary(c.fields) + "</div>" +
       '<div class="card fm-step"><details><summary><b>3. Thêm vùng cần thay mà chưa được tô màu</b></summary><p class="sub">Bôi đen đoạn chữ cần thay trong văn bản dưới đây, rồi bấm "Thêm vùng". (Ví dụ phần "bằng chữ" hoặc ngày tháng chưa tô màu.)</p>' +
       '<div id="eSel" class="fm-sel-bar" hidden></div><div class="fm-full" id="eFull"></div></details></div>' +
       '<div class="fm-actions"><button class="btn primary" id="eSave">Lưu biểu mẫu</button> <button class="btn" id="eTestW">Tạo thử Word (dữ liệu ví dụ)</button>' + (A.pdf ? ' <button class="btn" id="eTestP">Tạo thử PDF</button>' : "") + ' <button class="btn" id="eCancel">Quay lại</button></div>';
@@ -356,6 +416,9 @@ var Forms = (function () {
     document.querySelectorAll(".fTyp").forEach(function (e) { e.onchange = function () { c.fields[+e.dataset.f].type = e.value; }; });
     document.querySelectorAll(".fReq").forEach(function (e) { e.onchange = function () { c.fields[+e.dataset.f].required = e.checked; }; });
     document.querySelectorAll(".fEx").forEach(function (e) { e.oninput = function () { c.fields[+e.dataset.f].example = e.value; }; });
+    document.querySelectorAll(".fm-brkadd").forEach(function (e) { e.onclick = function () { c.fields[+e.dataset.f].brk = true; keepScroll(renderEditor); }; });
+    document.querySelectorAll(".brkDel").forEach(function (e) { e.onclick = function () { var f = c.fields[+e.dataset.f]; delete f.brk; delete f.section; keepScroll(renderEditor); }; });
+    document.querySelectorAll(".brkTitle").forEach(function (e) { e.oninput = function () { c.fields[+e.dataset.f].section = e.value; var m = document.querySelector(".fm-bsum"); if (m) m.outerHTML = blockSummary(c.fields); }; });
     $("eCancel").onclick = function () { loadAdmin(); };
     $("eSave").onclick = async function () {
       busy(this, true, "Đang lưu…");

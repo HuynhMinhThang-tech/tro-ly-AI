@@ -144,7 +144,7 @@ async function groqKey() {
   return (s.groq_key && dec(s.groq_key)) || process.env.GROQ_API_KEY || null;
 }
 async function groqModels(key) {
-  const res = await fetch(GROQ + '/models', { headers: { Authorization: 'Bearer ' + key } });
+  const res = await fetch(GROQ + '/models', { headers: { Authorization: 'Bearer ' + key }, signal: AbortSignal.timeout(15e3) }).catch(() => { throw new Error('Không kết nối được tới Groq, thử lại sau ít phút.'); });
   if (res.status === 401) throw new Error('API key không hợp lệ.');
   if (!res.ok) throw new Error('Không lấy được danh sách model (' + res.status + ').');
   const j = await res.json();
@@ -384,9 +384,16 @@ async function queryVec(text) {
   if (QCACHE.size > 300) QCACHE.delete(QCACHE.keys().next().value);
   return v;
 }
+// Giới hạn tần suất chat (xem lib/chat-limit.js)
+const chatLimiter = require('./lib/chat-limit').makeChatLimiter(pool);
 app.post('/api/chat', auth, async (q, r) => {
   const text = String((q.body || {}).message || '').trim().slice(0, 4000);
   if (!text) return r.status(400).json({ error: 'Hãy nhập câu hỏi.' });
+  const lim = await chatLimiter.check(q.me.id);
+  if (lim) { r.set('Retry-After', String(lim.wait)); return r.status(429).json({ error: lim.error }); }
+  return chatLimiter.hold(q.me.id, () => chatTurn(q, r, text));
+});
+async function chatTurn(q, r, text) {
   const key = await groqKey();
   if (!key) return r.status(503).json({ error: 'Quản trị viên chưa cấu hình API key cho AI.' });
 
@@ -415,12 +422,20 @@ app.post('/api/chat', auth, async (q, r) => {
   const s = await getSettings();
   const system = s.system_prompt + '\n\nNgười dùng tên: ' + q.me.display_name +
     (ctx ? '\n\n<tai_lieu>\n' + ctx + '\n</tai_lieu>' : '\n\nHiện không có tài liệu nào liên quan trong kho.');
-  const res = await fetch(GROQ + '/chat/completions', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
-    body: JSON.stringify({ model: s.groq_model || DEFAULT_MODEL, temperature: 0.2, max_tokens: 1500,
-      messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: text }] })
-  });
+  // Có giới hạn thời gian: Groq treo thì báo lỗi sau GROQ_TIMEOUT_MS (mặc định 45 giây) thay vì để người dùng chờ vô hạn
+  let res;
+  try {
+    res = await fetch(GROQ + '/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
+      signal: AbortSignal.timeout(+process.env.GROQ_TIMEOUT_MS || 45e3),
+      body: JSON.stringify({ model: s.groq_model || DEFAULT_MODEL, temperature: 0.2, max_tokens: 1500,
+        messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: text }] })
+    });
+  } catch (e) {
+    console.error('Groq không phản hồi:', e.name, e.message);
+    return r.status(e.name === 'TimeoutError' ? 504 : 502).json({ error: e.name === 'TimeoutError' ? 'Hệ thống AI phản hồi quá lâu, vui lòng thử lại sau ít phút.' : 'Không kết nối được tới hệ thống AI, vui lòng thử lại sau ít phút.' });
+  }
   if (!res.ok) {
     console.error('Groq', res.status, (await res.text()).slice(0, 300));
     return r.status(502).json({ error: res.status === 401 ? 'API key của AI chưa hợp lệ, vui lòng báo quản trị viên.'
@@ -436,7 +451,7 @@ app.post('/api/chat', auth, async (q, r) => {
   await pool.query('insert into messages(conversation_id, role, content, sources) values ($1,$2,$3,null), ($1,$4,$5,$6::jsonb)',
     [cid, 'user', text, 'assistant', answer, JSON.stringify(sources)]);
   r.json({ conversation_id: cid, answer, sources, mode: found.mode, notice });
-});
+}
 
 // Tab Biểu mẫu: admin tải mẫu Word, người dùng tải Excel/CSV lên để điền tự động rồi xuất Word/PDF (xem lib/templates.js)
 require('./lib/templates').mountTemplates(app, { pool, auth, admin, up, groqKey, GROQ, getSettings, DEFAULT_MODEL });

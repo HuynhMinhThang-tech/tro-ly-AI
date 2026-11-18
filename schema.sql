@@ -56,6 +56,8 @@ create table if not exists messages (
   sources jsonb,
   created_at timestamptz not null default now()
 );
+create index if not exists messages_conv_idx on messages (conversation_id, id);              -- tải lịch sử hội thoại, đếm tần suất chat
+create index if not exists conversations_user_idx on conversations (user_id, created_at desc);
 create table if not exists settings (key text primary key, value jsonb not null);
 
 -- ===== Tìm kiếm lai (từ khóa + ngữ nghĩa) =====
