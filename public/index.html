@@ -53,7 +53,7 @@ body[data-view="user"] #userView,body[data-view="admin"] #adminView{display:flex
 
 /* sidebars */
 /* thanh bên trái dùng chung cho người dùng và quản trị; thu gọn được */
-#side{width:256px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;overflow-x:hidden;transition:width .18s ease}
+#side{width:240px;flex:none;background:var(--surface);border-right:1px solid var(--line);padding:10px;display:flex;flex-direction:column;gap:2px;overflow-y:auto;overflow-x:hidden;transition:width .18s ease}
 #side .nav{position:relative;display:flex;align-items:center;gap:10px;width:100%;min-height:38px;border:0;background:transparent;padding:8px 10px;border-radius:10px;color:var(--ink);font-size:14.5px;font-weight:500;text-align:left;white-space:nowrap}
 #side .nav svg,#side .seg svg,#newChat svg{flex:none;width:19px;height:19px;stroke:currentColor;fill:none;stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
 #side .nav svg{opacity:.8}
@@ -63,13 +63,14 @@ body[data-view="user"] #userView,body[data-view="admin"] #adminView{display:flex
 #side h4{margin:14px 10px 4px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700}
 #side .hrow h4{margin:6px 4px 4px}
 #side .seg{display:flex;width:100%;margin:2px 0 8px}
-#side .seg button{flex:1;display:flex;align-items:center;justify-content:center;gap:6px;padding:6px 8px;font-size:13.5px}
+#side .seg button{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;gap:5px;padding:6px 6px;font-size:13px;white-space:nowrap}
+#side .seg .nl,#newChat .nl{overflow:hidden;text-overflow:ellipsis}
 #side .seg svg{width:16px;height:16px;stroke-width:2}
 .sidediv{height:1px;background:var(--line);margin:8px 4px}
 .sidesub{display:none;flex-direction:column;gap:2px;margin:2px 0 8px 18px;padding-left:8px;border-left:1px solid var(--line)}
-body[data-view="user"][data-utab="chat"] #chatSub,body[data-view="user"][data-utab="forms"] #fAside{display:flex}
+body[data-view="user"][data-utab="chat"] #chatSub{display:flex}
 #side .sidesub .item{font-size:13.5px;padding:6px 10px}
-#newChat{display:flex;align-items:center;gap:8px;justify-content:flex-start;padding:7px 12px}
+#newChat{display:flex;align-items:center;gap:8px;justify-content:flex-start;padding:7px 12px;font-size:13.5px;white-space:nowrap}
 #newChat svg{width:17px;height:17px;stroke-width:2.2}
 #adminNav{display:none;flex-direction:column;gap:2px}
 body[data-mode="admin"] #adminNav{display:flex}
@@ -79,7 +80,7 @@ body[data-auth="out"] #sideToggle{display:none}
 #scrim{display:none}
 @media (min-width:761px){   /* thu gọn: chỉ còn dải biểu tượng */
   body[data-side="min"] #side{width:64px;padding:10px 8px}
-  body[data-side="min"] #side .nl,body[data-side="min"] #side h4,body[data-side="min"] #side .hrow,body[data-side="min"] #convList,body[data-side="min"] #fAside,body[data-side="min"] .sidediv{display:none!important}
+  body[data-side="min"] #side .nl,body[data-side="min"] #side h4,body[data-side="min"] #side .hrow,body[data-side="min"] #convList,body[data-side="min"] .sidediv{display:none!important}
   body[data-side="min"] #side .nav,body[data-side="min"] #newChat{justify-content:center;padding:8px 0}
   body[data-side="min"] #chatSub{margin:2px 0 6px;padding:0;border:0}
   body[data-side="min"] #side .seg{flex-direction:column;border-radius:14px}
@@ -277,7 +278,6 @@ body[data-auth="in"] .auth{display:none}
         <div id="convList"></div>
       </div>
       <button type="button" class="nav" id="uForms" title="Biểu mẫu"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg><span class="nl">Biểu mẫu</span></button>
-      <div class="sidesub" id="fAside"></div>
       <div id="adminNav">
         <div class="sidediv"></div>
         <h4>Quản trị</h4>
@@ -435,7 +435,7 @@ function setUTab(k){
   $("uChat").setAttribute("aria-pressed",k==="chat");$("uForms").setAttribute("aria-pressed",k==="forms");
   if(k==="forms")Forms.loadUser();else fitQ();
 }
-$("uChat").onclick=function(){setView("user");setUTab("chat")};$("uForms").onclick=function(){setView("user");setUTab("forms")};
+$("uChat").onclick=function(){setView("user");setUTab("chat")};$("uForms").onclick=function(){var again=document.body.getAttribute("data-view")==="user"&&document.body.getAttribute("data-utab")==="forms";setView("user");setUTab("forms");if(again)Forms.home()};
 $("bUser").onclick=function(){setMode("user");if(document.body.getAttribute("data-view")==="admin"){setView("user");setUTab(document.body.getAttribute("data-utab")||"chat")}};
 $("bAdmin").onclick=function(){setMode("admin");setView("admin");loadDocs();loadUsers()};
 /* thanh bên: máy tính thu gọn/mở (nhớ lựa chọn), điện thoại là ngăn kéo */

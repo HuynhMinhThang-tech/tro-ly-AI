@@ -42,23 +42,63 @@ var Forms = (function () {
     try {
       var d = await api("/api/templates"); U.tpls = d.templates; U.pdf = d.pdf; warmPdf(); U.maxRows = d.max_rows; U.maxPdf = d.max_pdf_rows; TYPES = d.types || TYPES;
     } catch (e) { toast(e.message); return; }
-    if (!U.cur || !U.tpls.some(function (t) { return t.id === U.cur.id; })) U.cur = U.tpls[0] || null;
-    else U.cur = U.tpls.find(function (t) { return t.id === U.cur.id; });
-    renderAside(); renderMain();
+    U.cur = U.cur ? (U.tpls.find(function (t) { return t.id === U.cur.id; }) || null) : null;   // giữ biểu mẫu đang điền nếu còn; không thì về thư viện
+    renderMain();
   }
-  function renderAside() {
-    $("fAside").innerHTML = "<h4>Chọn biểu mẫu</h4>" + (U.tpls.length ? U.tpls.map(function (t) {
-      return '<button class="item" data-id="' + h(t.id) + '" aria-current="' + (U.cur && U.cur.id === t.id) + '">' + h(t.name) + "</button>";
-    }).join("") : '<p class="sub" style="font-size:13px">Chưa có biểu mẫu nào.</p>');
-    $("fAside").querySelectorAll(".item").forEach(function (b) {
-      b.onclick = function () { U.cur = U.tpls.find(function (t) { return t.id === b.dataset.id; }); U.headers = U.raw = U.checked = U.bands = null; U.mapping = {}; U.fileName = ""; U.hand = {}; U.touched = {}; renderAside(); renderMain(); };
-    });
+  /* Bỏ dấu + chữ thường: tìm "bien ban" vẫn ra "Biên bản" */
+  function fold(x) { return String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D").toLowerCase(); }
+  function resetWork() { U.headers = U.raw = U.checked = U.bands = null; U.mapping = {}; U.fileName = ""; U.hand = {}; U.touched = {}; }
+  function openTpl(id) { U.cur = U.tpls.find(function (t) { return t.id === id; }) || null; resetWork(); renderMain(); window.scrollTo(0, 0); var p = $("fMain"); if (p) p.scrollTop = 0; }
+  function home() { U.cur = null; resetWork(); renderMain(); }   // nút "Biểu mẫu" ở thanh bên khi đang ở trang Biểu mẫu
+  var ICO_SEARCH = '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+  var ICO_DOC = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M16 13H8M16 17H8"/></svg>';
+  function tplMatch(t, q) {
+    var hay = fold(t.name + " " + (t.description || "") + " " + (t.fields || []).map(function (f) { return f.label; }).join(" "));
+    return fold(q).split(/\s+/).filter(Boolean).every(function (w) { return hay.indexOf(w) >= 0; });
   }
+  function cardHtml(t) {
+    var n = (t.fields || []).length, bl = blocksOf(t.fields || []).length;
+    return '<button type="button" class="fm-card" data-id="' + h(t.id) + '"><span class="fm-ci">' + ICO_DOC + '</span><b class="fm-cn">' + h(t.name) + '</b>' +
+      '<span class="fm-cd">' + h(t.description || "Điền từ Excel/CSV hoặc nhập tay, xuất Word/PDF giữ nguyên định dạng.") + '</span>' +
+      '<span class="fm-cm">' + n + " trường" + (bl > 1 ? " · " + bl + " khối" : "") + '</span><span class="fm-go">Điền biểu mẫu →</span></button>';
+  }
+  /* Thư viện biểu mẫu: thẻ lớn ở khu vực chính, có ô tìm kiếm */
+  function renderGallery() {
+    var w = $("fMain").firstElementChild;
+    w.innerHTML = '<div class="fm-gal-head"><div><h2>Biểu mẫu</h2><p class="sub" id="fmCount"></p></div>' +
+      '<div class="fm-search" role="search">' + ICO_SEARCH + '<input id="fmSearch" type="search" placeholder="Tìm biểu mẫu…  (nhấn / để tìm nhanh)" aria-label="Tìm biểu mẫu" autocomplete="off" value="' + h(U.q || "") + '">' +
+      '<button type="button" class="fm-clear" id="fmClear" aria-label="Xóa nội dung tìm kiếm" hidden>✕</button></div></div><div id="fmCards" class="fm-cards"></div>';
+    var inp = $("fmSearch"), clr = $("fmClear");
+    function paint() {
+      var q = inp.value.trim(); U.q = inp.value; clr.hidden = !inp.value;
+      var hit = U.tpls.filter(function (t) { return !q || tplMatch(t, q); });
+      $("fmCount").textContent = q ? hit.length + " / " + U.tpls.length + " biểu mẫu khớp" : U.tpls.length + " biểu mẫu. Chọn một biểu mẫu để bắt đầu điền.";
+      $("fmCards").innerHTML = hit.length ? hit.map(cardHtml).join("") : '<div class="empty"><b>Không tìm thấy biểu mẫu nào khớp \u201c' + h(q) + '\u201d</b>Thử từ khóa ngắn hơn hoặc <button type="button" class="linkbtn" id="fmReset">xóa tìm kiếm</button>.</div>';
+      document.querySelectorAll("#fmCards .fm-card").forEach(function (b) { b.onclick = function () { openTpl(b.dataset.id); }; });
+      var r = $("fmReset"); if (r) r.onclick = function () { inp.value = ""; paint(); inp.focus(); };
+      return hit;
+    }
+    inp.oninput = paint;
+    inp.onkeydown = function (e) {
+      if (e.key === "Enter") { var hit = paint(); if (hit.length === 1) openTpl(hit[0].id); }   // chỉ còn một kết quả thì Enter mở luôn
+      else if (e.key === "Escape" && inp.value) { inp.value = ""; paint(); }
+    };
+    clr.onclick = function () { inp.value = ""; paint(); inp.focus(); };
+    paint();
+  }
+  document.addEventListener("keydown", function (e) {   // phím "/" nhảy tới ô tìm kiếm khi đang ở thư viện biểu mẫu
+    var inp = $("fmSearch"), t = e.target, typing = t && /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) || (t && t.isContentEditable);
+    if (e.key === "/" && inp && inp.offsetParent && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); inp.focus(); }
+  });
   function renderMain() {
-    var w = $("fMain").firstElementChild, t = U.cur;
-    if (!t) { w.innerHTML = '<div class="empty"><b>Chưa có biểu mẫu</b>Quản trị viên chưa đăng biểu mẫu nào. Vui lòng quay lại sau.</div>'; return; }
-    w.innerHTML = "<h2>" + h(t.name) + '</h2><p class="sub">' + h(t.description || "Điền thông tin từ Excel/CSV hoặc nhập tay, hệ thống tự điền vào biểu mẫu và xuất Word/PDF, giữ nguyên định dạng gốc.") + "</p>" +
+    var t = U.cur;
+    if (!U.tpls.length) { $("fMain").firstElementChild.innerHTML = '<div class="empty"><b>Chưa có biểu mẫu</b>Quản trị viên chưa đăng biểu mẫu nào. Vui lòng quay lại sau.</div>'; return; }
+    if (!t) { renderGallery(); return; }
+    var w = $("fMain").firstElementChild;
+    w.innerHTML = '<div class="fm-wh"><button type="button" class="btn sm fm-back" id="fmBack" title="Về danh sách biểu mẫu">← Tất cả biểu mẫu</button></div>' +
+      "<h2>" + h(t.name) + '</h2><p class="sub">' + h(t.description || "Điền thông tin từ Excel/CSV hoặc nhập tay, hệ thống tự điền vào biểu mẫu và xuất Word/PDF, giữ nguyên định dạng gốc.") + "</p>" +
       '<div class="filters"><button class="chip" data-m="file" aria-pressed="' + (U.mode === "file") + '">Từ Excel / CSV</button><button class="chip" data-m="hand" aria-pressed="' + (U.mode === "hand") + '">Nhập tay</button></div><div id="fmBody"></div>';
+    $("fmBack").onclick = home;
     w.querySelectorAll("[data-m]").forEach(function (b) { b.onclick = function () { U.mode = b.dataset.m; renderMain(); }; });
     U.mode === "file" ? renderFile() : renderHand();
   }
@@ -319,12 +359,19 @@ var Forms = (function () {
       '<div class="drop"><p><b>Thêm biểu mẫu mới</b><br><small>Dùng Word: tô màu vàng đúng những chỗ cần thay (họ tên, số vốn, ngày tháng…), lưu thành .docx rồi tải lên.</small></p>' +
       '<input id="tFile" type="file" accept=".docx" hidden><button class="btn primary" id="tPick">Chọn tệp Word (.docx)</button></div>' +
       '<div class="card fm-pdfstat" id="pdfStat"></div>' +
+      (A.list.length > 3 ? '<div class="fm-search fm-asearch" role="search">' + ICO_SEARCH + '<input id="aSearch" type="search" placeholder="Tìm biểu mẫu theo tên hoặc tệp…" aria-label="Tìm biểu mẫu" autocomplete="off"><button type="button" class="fm-clear" id="aClear" aria-label="Xóa nội dung tìm kiếm" hidden>✕</button></div>' : "") +
       '<div class="card"><div class="scroll"><table><thead><tr><th>Biểu mẫu</th><th>Tệp</th><th>Trường</th><th>Vùng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>' +
       (A.list.length ? A.list.map(function (t) {
-        return "<tr><td>" + h(t.name) + "</td><td><span class=\"fname\">" + h(t.filename) + "</span></td><td>" + t.field_count + "</td><td>" + t.slot_count + "</td><td>" +
+        return '<tr data-q="' + h(fold(t.name + " " + t.filename)) + '"><td>' + h(t.name) + "</td><td><span class=\"fname\">" + h(t.filename) + "</span></td><td>" + t.field_count + "</td><td>" + t.slot_count + "</td><td>" +
           (t.active ? '<span class="tag t-ok">Đang dùng</span>' : '<span class="tag">Đã tắt</span>') + '</td><td class="acts"><button class="btn sm" data-a="edit" data-id="' + h(t.id) + '">Sửa</button> <button class="btn sm" data-a="tog" data-id="' + h(t.id) + '">' + (t.active ? "Tắt" : "Bật") + '</button> <button class="btn sm danger" data-a="del" data-id="' + h(t.id) + '">Xóa</button></td></tr>';
       }).join("") : '<tr><td colspan="6"><div class="empty"><b>Chưa có biểu mẫu</b>Tải một tệp Word lên để bắt đầu.</div></td></tr>') + "</tbody></table></div></div>";
     paintPdf();
+    var as = $("aSearch");
+    if (as) {
+      var af = function () { var q = fold(as.value).trim().split(/\s+/).filter(Boolean); $("aClear").hidden = !as.value;
+        root.querySelectorAll("tbody tr[data-q]").forEach(function (tr) { tr.hidden = !q.every(function (w) { return tr.dataset.q.indexOf(w) >= 0; }); }); };
+      as.oninput = af; $("aClear").onclick = function () { as.value = ""; af(); as.focus(); };
+    }
     $("tPick").onclick = function () { $("tFile").click(); };
     $("tFile").onchange = async function () {
       var f = this.files[0]; this.value = ""; if (!f) return;
@@ -471,5 +518,5 @@ var Forms = (function () {
     };
   }
 
-  return { loadUser: loadUser, loadAdmin: loadAdmin };
+  return { loadUser: loadUser, loadAdmin: loadAdmin, home: home };
 })();
