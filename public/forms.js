@@ -59,7 +59,7 @@ var Forms = (function () {
   function cardHtml(t) {
     var n = (t.fields || []).length, bl = blocksOf(t.fields || []).length;
     return '<button type="button" class="fm-card" data-id="' + h(t.id) + '"><span class="fm-ci">' + ICO_DOC + '</span><b class="fm-cn">' + h(t.name) + '</b>' +
-      '<span class="fm-cd">' + h(t.description || "Điền từ Excel/CSV hoặc nhập tay, xuất Word/PDF giữ nguyên định dạng.") + '</span>' +
+      (t.description ? '<span class="fm-cd">' + h(t.description) + '</span>' : "") +
       '<span class="fm-cm">' + n + " trường" + (bl > 1 ? " · " + bl + " khối" : "") + '</span><span class="fm-go">Điền biểu mẫu →</span></button>';
   }
   /* Thư viện biểu mẫu: thẻ lớn ở khu vực chính, có ô tìm kiếm */
@@ -72,7 +72,7 @@ var Forms = (function () {
     function paint() {
       var q = inp.value.trim(); U.q = inp.value; clr.hidden = !inp.value;
       var hit = U.tpls.filter(function (t) { return !q || tplMatch(t, q); });
-      $("fmCount").textContent = q ? hit.length + " / " + U.tpls.length + " biểu mẫu khớp" : U.tpls.length + " biểu mẫu. Chọn một biểu mẫu để bắt đầu điền.";
+      $("fmCount").textContent = q ? hit.length + " / " + U.tpls.length + " biểu mẫu khớp" : "";
       $("fmCards").innerHTML = hit.length ? hit.map(cardHtml).join("") : '<div class="empty"><b>Không tìm thấy biểu mẫu nào khớp \u201c' + h(q) + '\u201d</b>Thử từ khóa ngắn hơn hoặc <button type="button" class="linkbtn" id="fmReset">xóa tìm kiếm</button>.</div>';
       document.querySelectorAll("#fmCards .fm-card").forEach(function (b) { b.onclick = function () { openTpl(b.dataset.id); }; });
       var r = $("fmReset"); if (r) r.onclick = function () { inp.value = ""; paint(); inp.focus(); };
@@ -96,7 +96,7 @@ var Forms = (function () {
     if (!t) { renderGallery(); return; }
     var w = $("fMain").firstElementChild;
     w.innerHTML = '<div class="fm-wh"><button type="button" class="btn sm fm-back" id="fmBack" title="Về danh sách biểu mẫu">← Tất cả biểu mẫu</button></div>' +
-      "<h2>" + h(t.name) + '</h2><p class="sub">' + h(t.description || "Điền thông tin từ Excel/CSV hoặc nhập tay, hệ thống tự điền vào biểu mẫu và xuất Word/PDF, giữ nguyên định dạng gốc.") + "</p>" +
+      "<h2>" + h(t.name) + "</h2>" + (t.description ? '<p class="sub">' + h(t.description) + "</p>" : "") +
       '<div class="filters"><button class="chip" data-m="file" aria-pressed="' + (U.mode === "file") + '">Từ Excel / CSV</button><button class="chip" data-m="hand" aria-pressed="' + (U.mode === "hand") + '">Nhập tay</button></div><div id="fmBody"></div>';
     $("fmBack").onclick = home;
     w.querySelectorAll("[data-m]").forEach(function (b) { b.onclick = function () { U.mode = b.dataset.m; renderMain(); }; });
@@ -355,7 +355,7 @@ var Forms = (function () {
   }
   function renderList() {
     var root = $("adminForms");
-    root.innerHTML = '<h2>Biểu mẫu</h2><p class="sub">Tải lên biểu mẫu Word (.docx) đã tô màu (highlight) các chỗ cần thay. Hệ thống nhận diện các chỗ đó, bạn đặt tên trường, người dùng chỉ cần tải Excel/CSV lên để điền tự động. Định dạng Word được giữ nguyên.</p>' +
+    root.innerHTML = '<h2>Biểu mẫu</h2>' +
       '<div class="drop"><p><b>Thêm biểu mẫu mới</b><br><small>Dùng Word: tô màu vàng đúng những chỗ cần thay (họ tên, số vốn, ngày tháng…), lưu thành .docx rồi tải lên.</small></p>' +
       '<input id="tFile" type="file" accept=".docx" hidden><button class="btn primary" id="tPick">Chọn tệp Word (.docx)</button></div>' +
       '<div class="card fm-pdfstat" id="pdfStat"></div>' +
