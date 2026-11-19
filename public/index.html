@@ -117,6 +117,19 @@ body[data-auth="out"] #sideToggle{display:none}
 .msg{max-width:min(620px,85%);padding:11px 14px;border-radius:16px;background:var(--surface);border:1px solid var(--line)}
 .me .msg{background:var(--bubble);color:var(--bubble-ink);border-color:transparent;border-bottom-right-radius:4px}
 .msg p{margin:0 0 8px}.msg p:last-child{margin:0}
+.think{display:flex;align-items:center;gap:9px;color:var(--muted);font-size:14px}
+.think .spin{flex:none;width:16px;height:16px;border-radius:50%;border:2px solid var(--line);border-top-color:var(--brand);animation:spin .8s linear infinite}
+.think .dots i{display:inline-block;width:4px;height:4px;margin-left:3px;border-radius:50%;background:currentColor;opacity:.3;animation:blink 1.2s infinite}
+.think .dots i:nth-child(2){animation-delay:.2s}.think .dots i:nth-child(3){animation-delay:.4s}
+.caret{display:inline-block;width:2px;height:1.05em;margin-left:2px;vertical-align:-2px;background:var(--brand);animation:caret 1s steps(1) infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{0%,80%,100%{opacity:.25}40%{opacity:1}}
+@keyframes caret{50%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.think .spin,.think .dots i,.caret{animation:none}.think .dots i{opacity:.6}}
+.refs{margin-top:10px;padding:9px 12px;border:1px dashed var(--line);border-radius:12px;background:var(--soft);font-size:13px;color:var(--muted)}
+.refs b{color:var(--ink)}
+.reflinks{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:5px}
+.reflinks a{color:var(--brand);font-weight:600;text-decoration:none}.reflinks a:hover{text-decoration:underline}
 .cites{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}
 .cite{border:1px solid var(--line);background:var(--soft);border-radius:8px;padding:3px 9px;font-size:12.5px;color:var(--brand)}
 .hint{font-size:12.5px;color:var(--muted);margin-top:8px}
@@ -538,18 +551,61 @@ $("q").addEventListener("input",fitQ);
 window.addEventListener("resize",fitQ);
 /* Gợi ý chỉ hiện ở cuộc trò chuyện mới, mất hẳn từ khi người dùng gửi câu đầu tiên */
 function syncChips(){var c=$("chips");c.hidden=!(c.children.length&&!$("col").querySelector(".row.me"))}
-function addMsg(role,text,sources){
-  var row=document.createElement("div"),me=role==="user";
-  row.className="row"+(me?" me":"");
-  var cites="";
-  if(sources&&sources.length)cites='<div class="cites">'+sources.map(function(s){
+function extras(sources,refs){
+  var h="";
+  if(sources&&sources.length)h+='<div class="cites">'+sources.map(function(s){
     return '<span class="cite">['+s.n+'] '+esc(s.number||s.title)+' · '+esc(shortHead(s.heading))+'</span>';
   }).join("")+'</div>';
-  row.innerHTML=(me?"":'<div class="seal lw" aria-hidden="true"><svg viewBox="0 0 64 64"><use href="#ico-lawyer"/></svg></div>')+'<div class="msg">'+(me?"<p>"+esc(text)+"</p>":fmt(text))+cites+'</div>';
+  refs=(refs||[]).filter(function(l){return /^https?:\/\//.test(l.url)});
+  if(refs.length)h+='<div class="refs"><b>Tham khảo thêm</b><div class="reflinks">'+refs.map(function(l){
+    return '<a href="'+esc(l.url)+'" target="_blank" rel="noopener noreferrer" title="'+esc(l.title)+'">'+esc(l.title)+' ('+esc(l.site)+') ↗</a>';
+  }).join("")+'</div></div>';
+  return h;
+}
+function addMsg(role,text,sources,refs){
+  var row=document.createElement("div"),me=role==="user";
+  row.className="row"+(me?" me":"");
+  row.innerHTML=(me?"":'<div class="seal lw" aria-hidden="true"><svg viewBox="0 0 64 64"><use href="#ico-lawyer"/></svg></div>')+'<div class="msg">'+(me?"<p>"+esc(text)+"</p>":fmt(text))+(me?"":extras(sources,refs))+'</div>';
   $("col").appendChild(row);
   $("thread").scrollTop=$("thread").scrollHeight;
   syncChips();
   return row;
+}
+/* Bong bóng "đang tra cứu / suy nghĩ" có vòng xoay + ba chấm nhấp nháy */
+function thinkHtml(label){
+  return '<div class="think" role="status" aria-live="polite"><span class="spin" aria-hidden="true"></span><span class="tl">'+esc(label)+'</span><span class="dots" aria-hidden="true"><i></i><i></i><i></i></span></div>';
+}
+/* Hiện chữ dần ra: nhận văn bản (đã có hoặc đang về từng mảnh) và "gõ" dần vào bong bóng; backlog càng nhiều thì gõ càng nhanh để không bị chậm hơn máy chủ */
+var REDUCED=window.matchMedia&&window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+function makeTyper(msg){
+  var target="",shown=0,ended=false,raf=0,onEnd=null,started=false;
+  function paint(){
+    var t=$("thread"),stick=t.scrollHeight-t.scrollTop-t.clientHeight<80;   /* chỉ tự cuộn khi người dùng đang ở cuối */
+    var part=target.slice(0,shown);
+    if((part.match(/\*\*/g)||[]).length%2)part+="**";   /* **in đậm** chưa đóng vẫn hiện đúng khi đang gõ */
+    var html=fmt(part).replace(/<\/p>$/,'<span class="caret" aria-hidden="true"></span></p>');
+    msg.innerHTML=html||'<p><span class="caret" aria-hidden="true"></span></p>';
+    if(stick)t.scrollTop=t.scrollHeight;
+  }
+  function frame(){
+    raf=0;
+    var rest=target.length-shown;
+    if(rest>0){
+      shown=(REDUCED||document.hidden)?target.length:Math.min(target.length,shown+Math.max(1,Math.min(12,Math.ceil(rest/60))));
+      paint();
+    }
+    if(shown<target.length)raf=requestAnimationFrame(frame);
+    else if(ended){if(onEnd)onEnd()}
+  }
+  function kick(){if(!raf)raf=requestAnimationFrame(frame)}
+  return {
+    started:function(){return started},
+    text:function(){return target},
+    push:function(t){if(!started){t=t.replace(/^\s+/,"");if(!t)return;started=true}target+=t;kick()},
+    /* kết thúc: đặt văn bản cuối cùng (chính xác) rồi chờ gõ xong mới gọi cb */
+    finish:function(full,cb){target=full;ended=true;onEnd=cb;if(!started){started=true;shown=0}kick()},
+    stop:function(){if(raf)cancelAnimationFrame(raf);raf=0}
+  };
 }
 function newChat(){
   cid=null;$("col").innerHTML="";
@@ -583,22 +639,69 @@ $("convList").addEventListener("click",async function(e){
   try{
     var m=await api("/api/conversations/"+b.dataset.c);
     cid=b.dataset.c;$("col").innerHTML="";
-    m.forEach(function(x){addMsg(x.role==="user"?"user":"bot",x.content,x.sources)});
+    m.forEach(function(x){addMsg(x.role==="user"?"user":"bot",x.content,x.sources,x.refs)});
     loadConvs();
   }catch(x){toast(x.message)}
 });
+/* Gọi /api/chat ở chế độ stream (SSE): status → delta… → done. Lỗi trước khi stream bắt đầu (429, 400…) vẫn là JSON thường */
+async function chatStream(text,on){
+  var res=await fetch("/api/chat",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+tok},body:JSON.stringify({message:text,conversation_id:cid,stream:true})});
+  if(res.status===401){signOut(true);throw new Error("Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.")}
+  if(!res.ok||(res.headers.get("content-type")||"").indexOf("text/event-stream")<0){
+    var d=await res.json().catch(function(){return {}});throw new Error(d.error||"Có lỗi xảy ra.")
+  }
+  var rd=res.body.getReader(),dec=new TextDecoder(),buf="",gotDone=false;
+  function handle(block){
+    var ev="message",data="";
+    block.split("\n").forEach(function(l){if(l.indexOf("event:")===0)ev=l.slice(6).trim();else if(l.indexOf("data:")===0)data+=l.slice(5).trim()});
+    if(!data)return;var j;try{j=JSON.parse(data)}catch(e){return}
+    if(ev==="done")gotDone=true;
+    on(ev,j);
+  }
+  for(;;){
+    var r=await rd.read();
+    if(r.done)break;
+    buf+=dec.decode(r.value,{stream:true});
+    var i;while((i=buf.indexOf("\n\n"))>=0){var b=buf.slice(0,i);buf=buf.slice(i+2);handle(b)}
+  }
+  if(buf.trim())handle(buf);
+  if(!gotDone)throw new Error("Kết nối bị gián đoạn, bạn thử hỏi lại nhé.");
+}
 async function send(text){
   text=String(text||$("q").value).trim();
   if(!text||busy)return;
   busy=true;$("q").value="";fitQ();
   addMsg("user",text);
-  var w=addMsg("bot","Đang tra cứu tài liệu…");
+  var row=addMsg("bot",""),msg=row.querySelector(".msg"),ty=makeTyper(msg);
+  msg.innerHTML=thinkHtml("Đang tra cứu tài liệu");
+  function setLabel(t){var e=msg.querySelector(".tl");if(e)e.textContent=t}
+  var finished=null;
   try{
-    var d=await api("/api/chat","POST",{message:text,conversation_id:cid});
-    cid=d.conversation_id;w.remove();var rw=addMsg("bot",d.answer,d.sources);
-    if(d.notice){var nh=document.createElement("div");nh.className="hint";nh.textContent=d.notice;rw.querySelector(".msg").appendChild(nh)}
+    await chatStream(text,function(ev,d){
+      if(ev==="status"){
+        if(ty.started())return;
+        setLabel(d.phase==="think"?(d.hits>0?"Đã tìm thấy "+d.hits+" đoạn liên quan, đang soạn câu trả lời":"Không thấy tài liệu liên quan, đang suy nghĩ"):"Đang tra cứu tài liệu");
+      }else if(ev==="delta"){ty.push(d.t)}
+      else if(ev==="error"){throw new Error(d.error||"Có lỗi xảy ra.")}
+      else if(ev==="done"){
+        cid=d.conversation_id;
+        finished=new Promise(function(done){
+          ty.finish(d.answer,function(){
+            msg.innerHTML=fmt(d.answer)+extras(d.sources,d.refs);
+            if(d.notice){var nh=document.createElement("div");nh.className="hint";nh.textContent=d.notice;msg.appendChild(nh)}
+            done();
+          });
+        });
+      }
+    });
+    if(finished)await finished;
     loadConvs();
-  }catch(x){w.remove();addMsg("bot","Chưa trả lời được lúc này: "+x.message)}
+  }catch(x){
+    ty.stop();
+    if(ty.started()){   /* đã có một phần câu trả lời: giữ lại và báo bị gián đoạn */
+      msg.innerHTML=fmt(ty.text())+'<div class="hint">Câu trả lời bị gián đoạn: '+esc(x.message)+'</div>';
+    }else{row.remove();addMsg("bot","Chưa trả lời được lúc này: "+x.message)}
+  }
   busy=false;
 }
 $("send").onclick=function(){send()};

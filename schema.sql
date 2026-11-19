@@ -56,6 +56,7 @@ create table if not exists messages (
   sources jsonb,
   created_at timestamptz not null default now()
 );
+alter table messages add column if not exists ref boolean not null default false;   -- câu trả lời có kèm liên kết "Tham khảo thêm" (xem lib/refs.js)
 create index if not exists messages_conv_idx on messages (conversation_id, id);              -- tải lịch sử hội thoại, đếm tần suất chat
 create index if not exists conversations_user_idx on conversations (user_id, created_at desc);
 create table if not exists settings (key text primary key, value jsonb not null);

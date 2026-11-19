@@ -361,8 +361,8 @@ app.get('/api/conversations', auth, async (q, r) => {
 app.get('/api/conversations/:id', auth, async (q, r) => {
   const { rows: [c] } = await pool.query('select id from conversations where id = $1 and user_id = $2', [q.params.id, q.me.id]);
   if (!c) return r.status(404).json({ error: 'Không tìm thấy cuộc trò chuyện.' });
-  const { rows } = await pool.query('select role, content, sources from messages where conversation_id = $1 order by id', [c.id]);
-  r.json(rows);
+  const { rows } = await pool.query('select role, content, sources, ref from messages where conversation_id = $1 order by id', [c.id]);
+  r.json(rows.map(m => ({ role: m.role, content: m.content, sources: m.sources, refs: m.ref ? REF_LINKS : [] })));
 });
 // Xóa lịch sử trò chuyện: chỉ xóa được của chính mình; tin nhắn xóa theo (on delete cascade)
 app.delete('/api/conversations/:id', auth, async (q, r) => {
@@ -385,17 +385,40 @@ async function queryVec(text) {
   return v;
 }
 // Giới hạn tần suất chat (xem lib/chat-limit.js)
+const { REF_LINKS, REF_RULE, wantsRef } = require('./lib/refs');
+const { makeAnswerFilter } = require('./lib/answer-filter');
 const chatLimiter = require('./lib/chat-limit').makeChatLimiter(pool);
 app.post('/api/chat', auth, async (q, r) => {
   const text = String((q.body || {}).message || '').trim().slice(0, 4000);
   if (!text) return r.status(400).json({ error: 'Hãy nhập câu hỏi.' });
   const lim = await chatLimiter.check(q.me.id);
   if (lim) { r.set('Retry-After', String(lim.wait)); return r.status(429).json({ error: lim.error }); }
-  return chatLimiter.hold(q.me.id, () => chatTurn(q, r, text));
+  return chatLimiter.hold(q.me.id, () => chatTurn(q, r, text)).catch(e => {
+    if (!r.headersSent) throw e;   // chưa gửi gì: để bộ xử lý lỗi chung trả JSON
+    console.error(e);              // đang stream: báo lỗi qua luồng rồi đóng
+    try { r.write('event: error\ndata: ' + JSON.stringify({ error: 'Lỗi máy chủ, vui lòng thử lại.', status: 500 }) + '\n\n'); } catch { }
+    r.end();
+  });
 });
 async function chatTurn(q, r, text) {
+  // Hai chế độ: JSON một lần (mặc định) hoặc stream SSE khi body có stream:true (giao diện dùng để hiện chữ dần ra)
+  const wantStream = !!(q.body || {}).stream;
+  let sse = false, closed = false;
+  const ac = new AbortController();
+  r.on('close', () => { if (!r.writableEnded) { closed = true; ac.abort(); } });   // người dùng đóng tab / mất mạng: dừng gọi AI
+  const emit = (event, data) => { if (sse && !closed) r.write('event: ' + event + '\ndata: ' + JSON.stringify(data) + '\n\n'); };
+  const fail = (status, error) => {
+    if (closed) return;
+    if (!sse) return r.status(status).json({ error });
+    emit('error', { error, status }); r.end();
+  };
+  if (wantStream) {
+    r.status(200).set({ 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
+    r.flushHeaders(); sse = true; emit('status', { phase: 'search' });
+  }
+
   const key = await groqKey();
-  if (!key) return r.status(503).json({ error: 'Quản trị viên chưa cấu hình API key cho AI.' });
+  if (!key) return fail(503, 'Quản trị viên chưa cấu hình API key cho AI.');
 
   let cid = (q.body || {}).conversation_id || null, history = [];
   if (cid) {
@@ -415,42 +438,80 @@ async function chatTurn(q, r, text) {
   try { found = await search(pool, { text, vec: qv }); hits = found.hits; }
   catch (e) {
     console.error('Truy vấn tài liệu lỗi:', e.message);
-    return r.status(502).json({ error: 'Không truy cập được cơ sở dữ liệu, vui lòng thử lại sau ít phút.' });
+    return fail(502, 'Không truy cập được cơ sở dữ liệu, vui lòng thử lại sau ít phút.');
   }
+  emit('status', { phase: 'think', hits: hits.length });
 
   const ctx = hits.map((h, i) => `[${i + 1}] ${h.title}${h.doc_number ? ' (' + h.doc_number + ')' : ''} – ${h.heading}\n${h.content}`).join('\n\n');
   const s = await getSettings();
-  const system = s.system_prompt + '\n\nNgười dùng tên: ' + q.me.display_name +
+  const system = s.system_prompt + '\n\n' + REF_RULE + '\n\nNgười dùng tên: ' + q.me.display_name +
     (ctx ? '\n\n<tai_lieu>\n' + ctx + '\n</tai_lieu>' : '\n\nHiện không có tài liệu nào liên quan trong kho.');
-  // Có giới hạn thời gian: Groq treo thì báo lỗi sau GROQ_TIMEOUT_MS (mặc định 45 giây) thay vì để người dùng chờ vô hạn
+  // Có giới hạn thời gian: Groq treo thì báo lỗi sau GROQ_TIMEOUT_MS (mặc định 45 giây) thay vì để người dùng chờ vô hạn.
+  // Ở chế độ stream, đồng hồ được đặt lại mỗi khi có dữ liệu mới (đo thời gian "im lặng", không đo tổng thời gian trả lời).
+  const gc = new AbortController(); let timedOut = false, timer;
+  const arm = () => { clearTimeout(timer); timer = setTimeout(() => { timedOut = true; gc.abort(); }, +process.env.GROQ_TIMEOUT_MS || 45e3); };
+  ac.signal.addEventListener('abort', () => gc.abort());
+  arm();
   let res;
   try {
     res = await fetch(GROQ + '/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + key },
-      signal: AbortSignal.timeout(+process.env.GROQ_TIMEOUT_MS || 45e3),
-      body: JSON.stringify({ model: s.groq_model || DEFAULT_MODEL, temperature: 0.2, max_tokens: 1500,
+      signal: gc.signal,
+      body: JSON.stringify({ model: s.groq_model || DEFAULT_MODEL, temperature: 0.2, max_tokens: 1500, ...(sse ? { stream: true } : {}),
         messages: [{ role: 'system', content: system }, ...history, { role: 'user', content: text }] })
     });
   } catch (e) {
+    clearTimeout(timer); if (closed) return;
     console.error('Groq không phản hồi:', e.name, e.message);
-    return r.status(e.name === 'TimeoutError' ? 504 : 502).json({ error: e.name === 'TimeoutError' ? 'Hệ thống AI phản hồi quá lâu, vui lòng thử lại sau ít phút.' : 'Không kết nối được tới hệ thống AI, vui lòng thử lại sau ít phút.' });
+    return fail(timedOut ? 504 : 502, timedOut ? 'Hệ thống AI phản hồi quá lâu, vui lòng thử lại sau ít phút.' : 'Không kết nối được tới hệ thống AI, vui lòng thử lại sau ít phút.');
   }
   if (!res.ok) {
+    clearTimeout(timer);
     console.error('Groq', res.status, (await res.text()).slice(0, 300));
-    return r.status(502).json({ error: res.status === 401 ? 'API key của AI chưa hợp lệ, vui lòng báo quản trị viên.'
+    return fail(502, res.status === 401 ? 'API key của AI chưa hợp lệ, vui lòng báo quản trị viên.'
       : res.status === 429 ? 'Hệ thống AI đang quá tải, vui lòng thử lại sau ít phút.'
-      : 'Hệ thống AI đang gặp sự cố hoặc model chưa phù hợp, vui lòng thử lại hoặc báo quản trị viên.' });
+      : 'Hệ thống AI đang gặp sự cố hoặc model chưa phù hợp, vui lòng thử lại hoặc báo quản trị viên.');
   }
-  const j = await res.json();
-  const answer = String(((j.choices || [])[0] || {}).message?.content || '').replace(/<think>[\s\S]*?<\/think>/g, '').trim()
-    || 'Tôi chưa tạo được câu trả lời, bạn thử hỏi lại nhé.';
+  // Gỡ khối <think> và dấu hiệu [[THAM_KHAO]] khỏi câu trả lời (cả khi nhận từng mảnh)
+  const filt = makeAnswerFilter();
+  let answer = '';
+  try {
+    if (sse) {
+      const dec = new TextDecoder(); let buf = '';
+      for await (const chunk of res.body) {
+        arm();
+        buf += dec.decode(chunk, { stream: true });
+        let i;
+        while ((i = buf.indexOf('\n')) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith('data:')) continue;
+          const data = line.slice(5).trim(); if (!data || data === '[DONE]') continue;
+          let j; try { j = JSON.parse(data); } catch { continue; }
+          const piece = (((j.choices || [])[0] || {}).delta || {}).content;
+          if (piece) { const vis = filt.push(piece); if (vis) { answer += vis; emit('delta', { t: vis }); } }
+        }
+      }
+      const tail = filt.flush(); if (tail) { answer += tail; emit('delta', { t: tail }); }
+    } else {
+      const j = await res.json();
+      answer = filt.push(String(((j.choices || [])[0] || {}).message?.content || '')) + filt.flush();
+    }
+  } catch (e) {
+    if (closed) return;
+    console.error('Đọc câu trả lời từ Groq lỗi:', e.name, e.message);
+    return fail(timedOut ? 504 : 502, timedOut ? 'Hệ thống AI phản hồi quá lâu, vui lòng thử lại sau ít phút.' : 'Kết nối tới hệ thống AI bị gián đoạn, vui lòng thử lại.');
+  } finally { clearTimeout(timer); }
+  if (closed) return;
+  answer = answer.trim() || 'Tôi chưa tạo được câu trả lời, bạn thử hỏi lại nhé.';
   const used = [...new Set([...answer.matchAll(/\[(\d+)\]/g)].map(m => +m[1]))].filter(n => hits[n - 1]);
   const sources = used.map(n => ({ n, title: hits[n - 1].title, number: hits[n - 1].doc_number, heading: hits[n - 1].heading }));
+  const ref = wantsRef({ marked: filt.state.marked, answer, hitCount: hits.length, question: text });
   if (!cid) cid = (await pool.query('insert into conversations(user_id, title) values ($1,$2) returning id', [q.me.id, text.slice(0, 60)])).rows[0].id;
-  await pool.query('insert into messages(conversation_id, role, content, sources) values ($1,$2,$3,null), ($1,$4,$5,$6::jsonb)',
-    [cid, 'user', text, 'assistant', answer, JSON.stringify(sources)]);
-  r.json({ conversation_id: cid, answer, sources, mode: found.mode, notice });
+  await pool.query('insert into messages(conversation_id, role, content, sources, ref) values ($1,$2,$3,null,false), ($1,$4,$5,$6::jsonb,$7)',
+    [cid, 'user', text, 'assistant', answer, JSON.stringify(sources), ref]);
+  const out = { conversation_id: cid, answer, sources, mode: found.mode, notice, refs: ref ? REF_LINKS : [] };
+  if (sse) { emit('done', out); r.end(); } else r.json(out);
 }
 
 // Tab Biểu mẫu: admin tải mẫu Word, người dùng tải Excel/CSV lên để điền tự động rồi xuất Word/PDF (xem lib/templates.js)

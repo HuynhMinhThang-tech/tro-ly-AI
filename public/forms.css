@@ -14,8 +14,6 @@ td.fm-bad{max-width:200px}
 .fm-grid input,.fm-step input[type=text],.fm-step input:not([type]),.fm-step select,.fm-step input[type=date],.fm-slots input.sFmt{font:inherit;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);color:var(--ink);width:100%;min-width:0}
 .fm-chk{flex-direction:row!important;align-items:center;font-weight:500!important}
 .fm-gen{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
-.fm-fmt{display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center}
-.fm-fmt label{display:inline-flex;flex-direction:row;align-items:center;gap:5px;font-weight:500}
 .fm-slots td{vertical-align:top}
 .fm-snip{max-width:420px;font-size:13px;line-height:1.5}
 .fm-snip mark,.fm-para mark{background:#fff3a3;color:inherit;border-radius:3px;padding:0 2px}
@@ -72,8 +70,6 @@ code{background:var(--soft);padding:1px 5px;border-radius:5px;font-size:12.5px}
 .fm-bsum{margin:10px 2px 0}
 :root[data-theme="dark"] .fm-prev tr.fm-band th.fm-bandc{color:#14212e}
 
-.fm-pdfstat{padding:10px 14px;margin:10px 0;display:flex;flex-wrap:wrap;align-items:center;gap:8px}
-.fm-pdfstat .btn{margin-left:auto}
 
 /* ===== Thư viện biểu mẫu (khu vực chính) ===== */
 .fm-gal-head{display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:10px 16px;margin-bottom:14px}

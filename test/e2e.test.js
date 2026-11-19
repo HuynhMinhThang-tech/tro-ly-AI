@@ -278,7 +278,7 @@ test('end-to-end: quyền admin + lập chỉ mục nền + tìm kiếm lai', { 
   });
 
   // ================= Tab Biểu mẫu =================
-  await t.test('biểu mẫu Word: admin quét vùng tô màu → lưu → người dùng tải Excel/CSV lên → xuất Word/PDF giữ nguyên định dạng', async () => {
+  await t.test('biểu mẫu Word: admin quét vùng tô màu → lưu → người dùng tải Excel/CSV lên → xuất Word giữ nguyên định dạng', async () => {
     const JSZip = require('jszip'), ExcelJS = require('exceljs');
     const tplName = 'mau-12-tang-von.docx', orig = fs.readFileSync(path.join(FX, tplName));
     const docText = async b => { const z = await JSZip.loadAsync(b); return [...(await z.file('word/document.xml').async('string')).matchAll(/<w:t(?: [^>]*)?>([^<]*)<\/w:t>/g)].map(m => m[1]).join(''); };
@@ -298,7 +298,7 @@ test('end-to-end: quyền admin + lập chỉ mục nền + tìm kiếm lai', { 
     assert.equal(mk.status, 201, JSON.stringify(mk.data)); const tid = mk.data.id;
 
     const list = (await call('/api/templates', { token: u2t })).data, tpl = list.templates.find(x => x.id === tid);
-    assert.ok(tpl && tpl.fields.length === cfg.fields.length); assert.equal(typeof list.pdf, 'boolean');
+    assert.ok(tpl && tpl.fields.length === cfg.fields.length); assert.equal(list.pdf, undefined);   // đã bỏ xuất PDF
     const fields = tpl.fields;
 
     // tệp mẫu để điền: Excel và CSV có đúng tiêu đề cột
@@ -349,10 +349,9 @@ test('end-to-end: quyền admin + lập chỉ mục nền + tìm kiếm lai', { 
     assert.match(g2.type, /zip/); const zf = Object.keys((await JSZip.loadAsync(g2.buf)).files);
     assert.equal(zf.length, 2); assert.ok(zf.every(n => n.endsWith('.docx')));
 
-    if (list.pdf) {   // máy chạy test có LibreOffice
-      const gp = await callBuf(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]], format: 'pdf' } });
-      assert.equal(gp.status, 200, gp.buf.toString().slice(0, 200)); assert.equal(gp.buf.subarray(0, 4).toString(), '%PDF');
-    } else assert.equal((await call(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]], format: 'pdf' } })).status, 501);
+    // đã bỏ xuất PDF: yêu cầu format 'pdf' cũ vẫn chỉ ra tệp Word
+    const gp = await callBuf(`/api/templates/${tid}/generate`, { method: 'POST', token: u2t, json: { rows: [rows[0]], format: 'pdf' } });
+    assert.equal(gp.status, 200, gp.buf.toString().slice(0, 200)); assert.equal(gp.buf.subarray(0, 2).toString(), 'PK');
 
     assert.equal((await call(`/api/templates/${tid}/map-ai`, { method: 'POST', token: u2t, json: { headers: ['Cột lạ'], taken: [] } })).status, 200);
     const tst = await callBuf('/api/admin/templates/test', { method: 'POST', token: root, form: (() => { const f = new FormData(); f.append('id', tid); return f; })() });

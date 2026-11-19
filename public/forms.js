@@ -5,10 +5,6 @@ var Forms = (function () {
   var TYPES = {};
   function h(s) { return esc(s == null ? "" : s); }
   /* Chia trường thành các khối theo đường ngắt khoảng của admin (giống blocksOf ở máy chủ): trường có brk mở khối mới, trường đầu luôn mở khối đầu */
-  function warmPdf() {   // dịch vụ PDF có thể đang "ngủ": gọi nhẹ một lần (tối đa 4 phút/lần) để lúc bấm xuất PDF không phải chờ khởi động
-    if (!U.pdf || Date.now() - (U.warmAt || 0) < 240000) return;
-    U.warmAt = Date.now(); api("/api/pdf/warmup").catch(function () { });
-  }
   function blocksOf(fields) {
     var out = [];
     (fields || []).forEach(function (f) {
@@ -36,11 +32,11 @@ var Forms = (function () {
   function busy(btn, on, text) { if (!btn) return; if (on) { btn.dataset.t = btn.textContent; btn.textContent = text || "Đang xử lý…"; btn.disabled = true; } else { btn.textContent = btn.dataset.t || btn.textContent; btn.disabled = false; } }
 
   /* ================= NGƯỜI DÙNG ================= */
-  var U = { tpls: [], cur: null, mode: "file", headers: null, bands: null, raw: null, mapping: {}, checked: null, fileName: "", hand: {}, touched: {}, pdf: false, maxRows: 50, maxPdf: 10 };
+  var U = { tpls: [], cur: null, mode: "file", headers: null, bands: null, raw: null, mapping: {}, checked: null, fileName: "", hand: {}, touched: {}, maxRows: 50 };
 
   async function loadUser() {
     try {
-      var d = await api("/api/templates"); U.tpls = d.templates; U.pdf = d.pdf; warmPdf(); U.maxRows = d.max_rows; U.maxPdf = d.max_pdf_rows; TYPES = d.types || TYPES;
+      var d = await api("/api/templates"); U.tpls = d.templates; U.maxRows = d.max_rows; TYPES = d.types || TYPES;
     } catch (e) { toast(e.message); return; }
     U.cur = U.cur ? (U.tpls.find(function (t) { return t.id === U.cur.id; }) || null) : null;   // giữ biểu mẫu đang điền nếu còn; không thì về thư viện
     renderMain();
@@ -305,67 +301,46 @@ var Forms = (function () {
 
   /* --- Chung: chọn định dạng + nút tạo --- */
   function genControls(kind) {
-    return '<div class="fm-gen"><div class="fm-fmt"><b>Xuất ra:</b> <label><input type="radio" name="fmt" value="docx" checked> Word (.docx)</label>' +
-      '<label><input type="radio" name="fmt" value="pdf"' + (U.pdf ? "" : " disabled") + '> PDF</label><label><input type="radio" name="fmt" value="both"' + (U.pdf ? "" : " disabled") + '> Cả hai</label></div>' +
-      (U.pdf ? "<small class=\"sub\">PDF tối đa " + U.maxPdf + " dòng mỗi lần.</small>" : '<small class="sub">Máy chủ chưa hỗ trợ xuất PDF: hãy tải Word rồi chọn "Lưu thành PDF" trong Word.</small>') +
+    return '<div class="fm-gen">' +
       '<div class="fm-btns"><button class="btn primary" id="fmGo" type="button">' + (kind === "hand" ? "Tạo văn bản" : "Tạo văn bản cho các dòng đã chọn") + "</button> " +
       (kind === "hand" ? '<button class="btn" id="fmClear" type="button">Xóa nội dung đã nhập</button>' : '<button class="btn" id="fmCancel" type="button">Hủy, xóa dữ liệu đã tải</button>') + "</div></div>";
   }
   function bindGen(getRows) {
     $("fmGo").onclick = async function () {
-      var btn = this, fmt = document.querySelector('input[name="fmt"]:checked').value, rows;
+      var btn = this, rows;
       busy(btn, true, "Đang kiểm tra…");
       try { rows = await getRows(); } catch (e) { busy(btn, false); return toast(e.message); }
       if (!rows) return busy(btn, false);
       if (!rows.length) { busy(btn, false); return toast("Chưa có dòng nào để tạo."); }
       btn.textContent = "Đang tạo văn bản…";
-      try { await download("/api/templates/" + U.cur.id + "/generate", { method: "POST", json: { rows: rows, format: fmt } }, "bieu-mau"); toast("Đã tạo xong, tệp đang được tải về."); }
+      try { await download("/api/templates/" + U.cur.id + "/generate", { method: "POST", json: { rows: rows } }, "bieu-mau"); toast("Đã tạo xong, tệp đang được tải về."); }
       catch (e) { toast(e.message); }
       busy(btn, false);
     };
   }
 
   /* ================= QUẢN TRỊ ================= */
-  var A = { pdf: false }, ed = null, selRange = null;
+  var A = {}, ed = null, selRange = null;
   var TYPE_LIST = ["text", "money", "number", "percent", "date", "tax_code", "id_card"];
 
   async function loadAdmin() {
     var root = $("adminForms");
     try {
-      var d = await api("/api/admin/templates"); A.pdf = d.pdf; TYPES = d.types || TYPES; A.list = d.templates;
+      var d = await api("/api/admin/templates"); TYPES = d.types || TYPES; A.list = d.templates;
     } catch (e) { root.innerHTML = '<p class="fm-bad">' + h(e.message) + "</p>"; return; }
-    ed = null; renderList(); checkPdf();
-  }
-  /* Hộp "Xuất PDF": thử chuyển thật một tệp nhỏ ở máy chủ rồi báo sẵn sàng hay lỗi gì (kể cả sai tài khoản dịch vụ PDF) */
-  async function checkPdf() {
-    var el = $("pdfStat"); if (!el) return;
-    el.innerHTML = '<b>Xuất PDF:</b> <span class="sub">đang kiểm tra… (nếu dịch vụ đang ngủ, lần đầu có thể mất vài chục giây)</span>';
-    var html;
-    try {
-      var st = await api("/api/admin/pdf/status"); A.pdf = !!st.ok;
-      html = st.ok
-        ? '<b>Xuất PDF:</b> <span class="tag t-ok">Sẵn sàng</span> <small class="sub">' + (st.mode === "gotenberg" ? "Dịch vụ Gotenberg" : "LibreOffice trên máy chủ") + ", tạo thử mất " + (st.ms / 1000).toFixed(1) + " giây</small>"
-        : '<b>Xuất PDF:</b> <span class="tag">Chưa dùng được</span> <small class="fm-bad">' + h(st.message || "Không rõ lỗi") + (st.detail ? " (" + h(st.detail) + ")" : "") + '</small> <small class="sub">Người dùng vẫn tải được bản Word. Xem gotenberg/README.md.</small>';
-    } catch (e) { html = '<b>Xuất PDF:</b> <small class="fm-bad">' + h(e.message) + "</small>"; }
-    A.pdfBox = html + ' <button class="btn sm" id="pdfRe">Kiểm tra lại</button>'; paintPdf();
-  }
-  function paintPdf() {   // vẽ lại hộp từ kết quả đã có (danh sách biểu mẫu vẽ lại sau khi bật/tắt, xóa… không cần gọi lại máy chủ)
-    var el = $("pdfStat"); if (!el || !A.pdfBox) return;
-    el.innerHTML = A.pdfBox; $("pdfRe").onclick = checkPdf;
+    ed = null; renderList();
   }
   function renderList() {
     var root = $("adminForms");
     root.innerHTML = '<h2>Biểu mẫu</h2>' +
       '<div class="drop"><p><b>Thêm biểu mẫu mới</b><br><small>Dùng Word: tô màu vàng đúng những chỗ cần thay (họ tên, số vốn, ngày tháng…), lưu thành .docx rồi tải lên.</small></p>' +
       '<input id="tFile" type="file" accept=".docx" hidden><button class="btn primary" id="tPick">Chọn tệp Word (.docx)</button></div>' +
-      '<div class="card fm-pdfstat" id="pdfStat"></div>' +
       (A.list.length > 3 ? '<div class="fm-search fm-asearch" role="search">' + ICO_SEARCH + '<input id="aSearch" type="search" placeholder="Tìm biểu mẫu theo tên hoặc tệp…" aria-label="Tìm biểu mẫu" autocomplete="off"><button type="button" class="fm-clear" id="aClear" aria-label="Xóa nội dung tìm kiếm" hidden>✕</button></div>' : "") +
       '<div class="card"><div class="scroll"><table><thead><tr><th>Biểu mẫu</th><th>Tệp</th><th>Trường</th><th>Vùng</th><th>Trạng thái</th><th>Thao tác</th></tr></thead><tbody>' +
       (A.list.length ? A.list.map(function (t) {
         return '<tr data-q="' + h(fold(t.name + " " + t.filename)) + '"><td>' + h(t.name) + "</td><td><span class=\"fname\">" + h(t.filename) + "</span></td><td>" + t.field_count + "</td><td>" + t.slot_count + "</td><td>" +
           (t.active ? '<span class="tag t-ok">Đang dùng</span>' : '<span class="tag">Đã tắt</span>') + '</td><td class="acts"><button class="btn sm" data-a="edit" data-id="' + h(t.id) + '">Sửa</button> <button class="btn sm" data-a="tog" data-id="' + h(t.id) + '">' + (t.active ? "Tắt" : "Bật") + '</button> <button class="btn sm danger" data-a="del" data-id="' + h(t.id) + '">Xóa</button></td></tr>';
       }).join("") : '<tr><td colspan="6"><div class="empty"><b>Chưa có biểu mẫu</b>Tải một tệp Word lên để bắt đầu.</div></td></tr>') + "</tbody></table></div></div>";
-    paintPdf();
     var as = $("aSearch");
     if (as) {
       var af = function () { var q = fold(as.value).trim().split(/\s+/).filter(Boolean); $("aClear").hidden = !as.value;
@@ -450,7 +425,7 @@ var Forms = (function () {
       }).join("") + (c.fields.length ? '<tr class="fm-brk end"><td colspan="5"><div class="fm-brkline"><span>Hết biểu mẫu</span></div></td></tr>' : "") + "</tbody></table></div>" + blockSummary(c.fields) + "</div>" +
       '<div class="card fm-step"><details><summary><b>3. Thêm vùng cần thay mà chưa được tô màu</b></summary><p class="sub">Bôi đen đoạn chữ cần thay trong văn bản dưới đây, rồi bấm "Thêm vùng". (Ví dụ phần "bằng chữ" hoặc ngày tháng chưa tô màu.)</p>' +
       '<div id="eSel" class="fm-sel-bar" hidden></div><div class="fm-full" id="eFull"></div></details></div>' +
-      '<div class="fm-actions"><button class="btn primary" id="eSave">Lưu biểu mẫu</button> <button class="btn" id="eTestW">Tạo thử Word (dữ liệu ví dụ)</button>' + (A.pdf ? ' <button class="btn" id="eTestP">Tạo thử PDF</button>' : "") + ' <button class="btn" id="eCancel">Quay lại</button></div>';
+      '<div class="fm-actions"><button class="btn primary" id="eSave">Lưu biểu mẫu</button> <button class="btn" id="eTestW">Tạo thử Word (dữ liệu ví dụ)</button> <button class="btn" id="eCancel">Quay lại</button></div>';
     bindEditor(); renderFull();
   }
   function bindEditor() {
@@ -475,17 +450,17 @@ var Forms = (function () {
         toast("Đã lưu biểu mẫu."); loadAdmin();
       } catch (e) { busy(this, false); toast(e.message); }
     };
-    function test(fmt) {
+    function testWord() {
       return async function () {
         busy(this, true, "Đang tạo thử…");
         try {
-          var fd = new FormData(); if (ed.id) fd.append("id", ed.id); else fd.append("file", ed.file); fd.append("config", JSON.stringify(c)); fd.append("format", fmt);
-          await download("/api/admin/templates/test", { method: "POST", form: fd }, "bieu-mau-thu." + fmt); toast("Đã tạo bản thử, hãy mở ra kiểm tra bố cục.");
+          var fd = new FormData(); if (ed.id) fd.append("id", ed.id); else fd.append("file", ed.file); fd.append("config", JSON.stringify(c));
+          await download("/api/admin/templates/test", { method: "POST", form: fd }, "bieu-mau-thu.docx"); toast("Đã tạo bản thử, hãy mở ra kiểm tra bố cục.");
         } catch (e) { toast(e.message); }
         busy(this, false);
       };
     }
-    $("eTestW").onclick = test("docx"); if ($("eTestP")) $("eTestP").onclick = test("pdf");
+    $("eTestW").onclick = testWord();
   }
   function keepScroll(fn) { var y = ($("fMain") || document.scrollingElement || {}).scrollTop; var p = $("tab-forms"); var st = p ? p.scrollTop : 0; fn(); if (p) p.scrollTop = st; void y; }
 

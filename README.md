@@ -66,8 +66,12 @@ Máy chủ quét lại lần nữa khi xác nhận nên không thể lách bằn
 | Trùng nội dung hoặc trùng số hiệu với tài liệu đã có | Cảnh báo |
 | Cần nhiều token embedding (> 500.000) | Cảnh báo |
 
+## Trả lời trong khung chat
+- **Hiệu ứng:** khi hỏi, bong bóng hiện vòng xoay "Đang tra cứu tài liệu" rồi "Đã tìm thấy N đoạn liên quan, đang soạn câu trả lời"; câu trả lời được máy chủ gửi về từng mảnh (SSE, `stream: true` trong `POST /api/chat`) và hiện dần ra từng chữ. Bỏ `stream` thì `/api/chat` vẫn trả JSON một lần như cũ.
+- **Tham khảo thêm:** khi tài liệu trong kho không có hoặc chưa đủ, hoặc câu hỏi cần văn bản mới nhất / bản gốc, câu trả lời có thêm khung liên kết tới `dulieuphapluat.vn` và `chinhphu.vn/he-thong-van-ban`. AI chỉ chèn dấu hiệu `[[THAM_KHAO]]` (hệ thống gỡ khỏi nội dung), đường link do code quyết định nên không bị bịa. Đổi hoặc thêm trang: sửa `REF_LINKS` trong `lib/refs.js`. Khung này được lưu theo từng tin nhắn (cột `messages.ref`, tự thêm khi khởi động).
+
 ## Biểu mẫu tự động điền (tab "Biểu mẫu")
-Admin đăng biểu mẫu Word (.docx); người dùng tải Excel/CSV lên, hệ thống điền vào mẫu và xuất Word/PDF **giữ nguyên định dạng**.
+Admin đăng biểu mẫu Word (.docx); người dùng tải Excel/CSV lên, hệ thống điền vào mẫu và xuất Word (.docx) **giữ nguyên định dạng**.
 
 **Admin** (Quản trị → Biểu mẫu): trong Word, tô màu (highlight) đúng những chỗ cần thay rồi tải tệp lên. Hệ thống:
 - nhận diện từng vùng tô màu, gợi ý tên trường (theo chữ đứng trước, tiêu đề bảng...), các vùng cùng giá trị (ví dụ số vốn xuất hiện 3 lần) dùng chung một trường;
@@ -92,14 +96,8 @@ Nội dung điền vào mỗi vùng viết dạng `{{tên_trường}}` kèm bộ
 
 **Vì sao không lệch định dạng:** chỉ chữ bên trong các thẻ `<w:t>` của đúng vùng được chọn bị đổi; mọi thứ khác (kiểu chữ, bảng, lề, đầu/chân trang, font...) chép nguyên từ tệp gốc (`lib/docx-template.js`). Số, chữ, ngày do code xác định, không dùng AI. Dữ liệu người dùng xử lý trong bộ nhớ rồi bỏ; chỉ ghi ai dùng mẫu nào và số dòng (`template_runs`).
 
-**Xuất PDF** cần LibreOffice hoặc một dịch vụ Gotenberg:
-- App chạy trên **Vercel** (không cài được LibreOffice): chạy một dịch vụ Gotenberg riêng bằng `gotenberg/Dockerfile` rồi đặt `GOTENBERG_URL`, `GOTENBERG_USER`, `GOTENBERG_PASSWORD` trên Vercel. Hướng dẫn từng bước: [`gotenberg/README.md`](gotenberg/README.md).
-- Máy có LibreOffice: tự phát hiện lệnh `soffice` (hoặc đặt `SOFFICE_PATH`).
-- Triển khai bằng Docker: dùng `Dockerfile` ở thư mục gốc (đã cài LibreOffice và font Liberation, tương thích Times New Roman).
-- Không có cách nào ở trên: giao diện tự khóa lựa chọn PDF, vẫn xuất Word; người dùng mở Word và chọn "Lưu thành PDF".
-- Trang quản trị → Biểu mẫu có hộp **Xuất PDF** chuyển thử một tệp thật và báo sẵn sàng hay lỗi gì (sai tài khoản, không kết nối được, quá thời gian…), kèm nút "Kiểm tra lại". Khi người dùng mở tab Biểu mẫu, app gọi nhẹ để đánh thức dịch vụ PDF đang "ngủ"; gặp lỗi 502/503/504 hoặc mất kết nối thì tự thử lại một lần.
-- Vercel giới hạn phản hồi của hàm ở 4,5 MB: kết quả lớn hơn `MAX_RESPONSE_MB` (mặc định 4 trên Vercel) sẽ báo lỗi rõ ràng thay vì lỗi mơ hồ.
-PDF do LibreOffice dựng nên ngắt dòng có thể lệch rất nhẹ so với Word nếu máy chủ thiếu font Times New Roman. Giới hạn: `MAX_FORM_ROWS` (50 dòng/lần), `MAX_PDF_ROWS` (10 dòng/lần).
+**Xuất file:** chỉ xuất Word (.docx), không còn xuất PDF. Muốn có PDF thì mở tệp Word rồi chọn "Lưu thành PDF" trong Word.
+- Vercel giới hạn phản hồi của hàm ở 4,5 MB: kết quả lớn hơn `MAX_RESPONSE_MB` (mặc định 4 trên Vercel) sẽ báo lỗi rõ ràng thay vì lỗi mơ hồ. Giới hạn số dòng mỗi lần: `MAX_FORM_ROWS` (50 dòng/lần).
 
 ## Cài đặt
 1. **Neon** (neon.com): tạo project → copy chuỗi kết nối dạng *pooled* (có `-pooler`) làm `DATABASE_URL`.
